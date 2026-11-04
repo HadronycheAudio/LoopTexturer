@@ -12,7 +12,7 @@ BEGIN_FACTORY_DEF (LOOPTEXTURER_VENDOR, LOOPTEXTURER_URL, LOOPTEXTURER_EMAIL)
                 PClassInfo::kManyInstances,
                 kVstAudioEffectClass,
                 LOOPTEXTURER_NAME,
-                Vst::kDistributable,
+                0, // Not distributable: the processor and the UI share the looper's memory.
                 Vst::PlugType::kFx,
                 LOOPTEXTURER_VERSION,
                 kVstVersionString,

@@ -31,6 +31,12 @@ enum ParamId : Steinberg::Vst::ParamID
     kPostSatDrive,
     kPostSatMix,
     kVolume,
+    kLooperMode,
+    kLooperFreeLength,
+    kLooperBars,
+    kLooperCustomBars,
+    kLooperFeedback,
+    kLooperDryWet,
     kParamCount
 };
 
@@ -39,7 +45,21 @@ enum class Curve
     Linear,
     Log,
     List,
-    Toggle
+    Toggle,
+    Integer
+};
+
+// The entries of kLooperBars, in order.
+enum LooperBarChoice
+{
+    kBarsHalf,
+    kBarsOne,
+    kBarsTwo,
+    kBarsFour,
+    kBarsSix,
+    kBarsEight,
+    kBarsCustom,
+    kBarsOpen
 };
 
 struct ParamSpec
@@ -70,7 +90,9 @@ using ParamValues = std::array<double, kParamCount>;
 // read older projects.
 bool writeParamState (Steinberg::IBStream* stream, const ParamValues& normalizedValues);
 
-// Calls onValue (id, normalized) for every known parameter in the stream.
-bool readParamState (Steinberg::IBStream* stream, const std::function<void (Steinberg::Vst::ParamID, double)>& onValue);
+// Calls onValue (id, normalized) for every known parameter in the stream. On return, the stream is
+// positioned at whatever was saved after the parameters.
+bool readParamState (Steinberg::IBStream* stream, const std::function<void (Steinberg::Vst::ParamID, double)>& onValue,
+                     int* version = nullptr);
 
 } // namespace LoopTexturer

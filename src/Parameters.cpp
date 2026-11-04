@@ -11,16 +11,21 @@ namespace LoopTexturer {
 
 namespace {
 
-constexpr int32 kStateVersion = 1;
+// Version 2 adds the looper's audio after the parameters.
+constexpr int32 kStateVersion = 2;
 
 // The order of these lists must match the enums in src/dsp.
 const char* const kLfoWaves[] = { "Sine", "Triangle", "Square", "Sample & hold" };
 const char* const kFilterModes[] = { "Low-pass", "High-pass", "Band-pass", "Notch" };
 const char* const kSatModes[] = { "Hard clip", "Soft saturator", "Sine clip", "Tube", "Wavefolder", "Rectifier" };
+const char* const kLooperModes[] = { "Free running", "Tempo sync" };
+const char* const kLooperBarChoices[] = { "1/2 bar", "1 bar", "2 bars", "4 bars", "6 bars", "8 bars", "Custom", "Open" };
 
 constexpr int kLfoWaveCount = 4;
 constexpr int kFilterModeCount = 4;
 constexpr int kSatModeCount = 6;
+constexpr int kLooperModeCount = 2;
+constexpr int kLooperBarChoiceCount = 8;
 
 // Listed in ParamId order.
 const std::array<ParamSpec, kParamCount> kSpecs { {
@@ -49,6 +54,13 @@ const std::array<ParamSpec, kParamCount> kSpecs { {
     { "Post sat mix", "%", 0.0, 100.0, 100.0, Curve::Linear, 0, nullptr, 0 },
 
     { "Volume", "dB", kVolumeSilenceDb, 6.0, 0.0, Curve::Linear, 1, nullptr, 0 },
+
+    { "Looper mode", "", 0.0, kLooperModeCount - 1, 0.0, Curve::List, 0, kLooperModes, kLooperModeCount },
+    { "Looper length", "s", 0.5, 10.0, 2.0, Curve::Log, 2, nullptr, 0 },
+    { "Looper bars", "", 0.0, kLooperBarChoiceCount - 1, 1.0, Curve::List, 0, kLooperBarChoices, kLooperBarChoiceCount },
+    { "Looper custom bars", "bars", 1.0, 64.0, 16.0, Curve::Integer, 0, nullptr, 0 },
+    { "Looper feedback", "%", 0.0, 200.0, 100.0, Curve::Linear, 0, nullptr, 0 },
+    { "Looper dry/wet", "%", 0.0, 100.0, 50.0, Curve::Linear, 0, nullptr, 0 },
 } };
 
 } // namespace
@@ -67,6 +79,7 @@ double normalizedToPlain (const ParamSpec& spec, double normalized)
         case Curve::Log: return spec.min * std::pow (spec.max / spec.min, n);
         case Curve::List: return std::round (n * (spec.labelCount - 1));
         case Curve::Toggle: return n >= 0.5 ? 1.0 : 0.0;
+        case Curve::Integer: return std::round (spec.min + (spec.max - spec.min) * n);
     }
     return spec.min;
 }
@@ -79,7 +92,8 @@ double plainToNormalized (const ParamSpec& spec, double plain)
         case Curve::Log: return std::log (p / spec.min) / std::log (spec.max / spec.min);
         case Curve::Linear:
         case Curve::List:
-        case Curve::Toggle: return (p - spec.min) / (spec.max - spec.min);
+        case Curve::Toggle:
+        case Curve::Integer: return (p - spec.min) / (spec.max - spec.min);
     }
     return 0.0;
 }
@@ -98,7 +112,7 @@ bool writeParamState (IBStream* stream, const ParamValues& normalizedValues)
     return true;
 }
 
-bool readParamState (IBStream* stream, const std::function<void (Vst::ParamID, double)>& onValue)
+bool readParamState (IBStream* stream, const std::function<void (Vst::ParamID, double)>& onValue, int* versionOut)
 {
     IBStreamer streamer (stream, kLittleEndian);
 
@@ -117,6 +131,9 @@ bool readParamState (IBStream* stream, const std::function<void (Vst::ParamID, d
         if (id >= 0 && id < kParamCount && std::isfinite (value))
             onValue (static_cast<Vst::ParamID> (id), std::clamp (value, 0.0, 1.0));
     }
+
+    if (versionOut)
+        *versionOut = version;
     return true;
 }
 

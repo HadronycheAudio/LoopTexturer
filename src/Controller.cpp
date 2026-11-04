@@ -1,6 +1,8 @@
 #include "Controller.h"
 
 #include "Editor.h"
+#include "LooperBridge.h"
+#include "Messages.h"
 #include "Parameters.h"
 
 #include "pluginterfaces/base/ustring.h"
@@ -22,7 +24,7 @@ public:
     SpecParameter (Vst::ParamID id, const ParamSpec& spec)
     : Vst::Parameter (UString128 (spec.title), id, UString128 (spec.units),
                       plainToNormalized (spec, spec.defaultValue), getStepCount (spec),
-                      getFlags (spec)),
+                      getFlags (id, spec)),
       _spec (spec), _id (id)
     {
     }
@@ -97,12 +99,15 @@ private:
     {
         if (spec.curve == Curve::List)
             return spec.labelCount - 1;
+        if (spec.curve == Curve::Integer)
+            return static_cast<int32> (spec.max - spec.min);
         return spec.curve == Curve::Toggle ? 1 : 0;
     }
 
-    static int32 getFlags (const ParamSpec& spec)
+    static int32 getFlags (Vst::ParamID id, const ParamSpec& spec)
     {
-        int32 flags = Vst::ParameterInfo::kCanAutomate;
+        // Changing the looper's mode clears the loop, which automation shouldn't be able to do.
+        int32 flags = id == kLooperMode ? 0 : Vst::ParameterInfo::kCanAutomate;
         if (spec.curve == Curve::List)
             flags |= Vst::ParameterInfo::kIsList;
         return flags;
@@ -141,6 +146,29 @@ IPlugView* PLUGIN_API Controller::createView (FIDString name)
         return new Editor (this);
 
     return nullptr;
+}
+
+tresult PLUGIN_API Controller::notify (Vst::IMessage* message)
+{
+    if (message && FIDStringsEqual (message->getMessageID (), kMessageLooperBridge))
+    {
+        int64 id = 0;
+        if (message->getAttributes ()->getInt (kAttributeBridgeId, id) == kResultOk)
+            _looperBridge = LooperBridge::find (id);
+        return kResultOk;
+    }
+    return EditController::notify (message);
+}
+
+void Controller::sendLooperCommand (int command)
+{
+    if (auto* message = allocateMessage ())
+    {
+        message->setMessageID (kMessageLooperCommand);
+        message->getAttributes ()->setInt (kAttributeCommand, command);
+        sendMessage (message);
+        message->release ();
+    }
 }
 
 } // namespace LoopTexturer

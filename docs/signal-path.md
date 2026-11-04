@@ -2,7 +2,7 @@
 
 Specification of the signal chain and UI. **Requirement** marks what has been decided, and **Proposed** marks suggestions that aren't confirmed.
 
-**Status:** Gain, Pan, Filter, both saturators, Volume and the panel are implemented, using the proposed values below. The looper, dry/wet and the real drag export are not implemented yet.
+**Status:** everything below is implemented, using the proposed values.
 
 LoopTexturer is mainly a sound design tool rather than a performance tool, so some latency is acceptable.
 
@@ -122,6 +122,7 @@ flowchart LR
 - A fixed 10 s buffer acting as the tape (3.84 MB at 48 kHz). The knob sets the tape speed: 10 s is normal speed and 500 ms is 20x.
 - Audio recorded at any length plays back at the correct pitch while the knob stays there. Moving the knob across its whole range shifts the pitch by up to about 4.3 octaves.
 - No Play or Stop buttons, because the tape never stops. The dry/wet control silences the loop instead.
+- Rec keeps replacing what's on the tape until it's pressed again. Overdub adds to it in the same way.
 
 #### Tempo sync mode
 
@@ -140,6 +141,11 @@ flowchart LR
 - Bar length taken from Cubase's tempo and time signature when recording starts. After that, the loop keeps its length in beats if the time signature changes.
 - Playback stays in phase with where the loop was recorded: a 2-bar loop recorded from bar 5 always restarts on odd bars.
 - Pressing Rec while the transport is stopped arms recording until playback starts.
+- The length setting applies to the next recording, and doesn't change a loop that's already recorded.
+- Pressing Rec during a recording ends it at the next bar line, whatever length was chosen.
+- Pressing Rec with a loop playing keeps it playing until the next bar line, where the new recording replaces it.
+- Stop silences the loop right away. Play brings it back at the next bar line, in phase.
+- A locate or cycle jump during the first pass of a recording cancels it, because the loop's length isn't settled yet. Once the loop exists, jumps are fine: it plays from the matching position.
 
 Memory needed for 64 bars of stereo 32-bit audio at 48 kHz in 4/4:
 
@@ -159,7 +165,9 @@ Memory needed for 64 bars of stereo 32-bit audio at 48 kHz in 4/4:
 
 **Proposed:**
 
-- A soft saturating limiter and a DC blocker in the feedback path. At 200% the level doubles on every pass, so it would otherwise run out of control very quickly. This curve is what gives feedback above 100% its distortion, and it leaves the loop untouched at 100% and below as long as levels stay within range.
+- Feedback is applied on every pass while the loop plays, not only while overdubbing. So anything other than 100% keeps changing the loop for as long as it runs.
+- A soft saturating limiter, unchanged up to full scale and with a ceiling of 1.5 (+3.5 dB), plus a DC blocker above 100%. At 200% the level doubles on every pass, so it would otherwise run out of control very quickly. This curve is what gives feedback above 100% its distortion.
+- At 100%, the loop stays bit-exact over any number of passes, as the audio isn't rewritten.
 
 #### Switching modes
 
@@ -193,7 +201,9 @@ Memory needed for 64 bars of stereo 32-bit audio at 48 kHz in 4/4:
 - Drag the looper's audio from the plug-in onto the Cubase timeline, like the Looper in Ableton Live.
 - The WAV contains the loop as heard: at its current speed and through the post saturator, without the dry signal or Volume.
 
-VST3 has no API for this. The plug-in writes a WAV file and starts an operating system file drag. The drag test is built but not yet confirmed in Cubase.
+VST3 has no API for this. The plug-in writes a WAV file and starts an operating system file drag, which works in Cubase. Dragging starts from the waveform.
+
+**Proposed:** 32-bit float files with unique names, kept in `%LOCALAPPDATA%\LoopTexturer\Exports`, because Cubase may keep referencing them after the drop.
 
 ## User interface
 
@@ -207,11 +217,12 @@ VST3 has no API for this. The plug-in writes a WAV file and starts an operating 
 
 ## Implementation notes
 
-- **Shared tape model:** both looper modes can use the same engine, a buffer read and written at a variable speed. Only the source of the speed differs: the knob in free running mode, and the current tempo relative to the recorded tempo in tempo sync mode.
-- **Sound at high tape speed:** repitching needs an interpolating read, and high speeds need filtering to limit aliasing.
-- **Memory in tempo sync mode:** the audio thread can't allocate memory, and reserving 64 bars up front would be costly at slow tempos. A background thread can add memory in chunks ahead of the recording, so only what's used gets allocated.
-- **Running while Cubase is idle:** Cubase can suspend plug-ins that receive no audio, which would stop the tape. The plug-in will return `kInfiniteTail` from `getTailSamples`, and this needs checking in Cubase.
-- **Latency:** each saturator adds a constant 48 samples whether it's on or off, for a total of 96 samples reported to Cubase. The latency stays the same at every sample rate, so it lasts 2 ms at 48 kHz. The looper's position has to account for it to stay on the grid, and the dry signal has to be delayed by 48 samples to line up with the post saturator's output.
+- **Shared tape model:** both looper modes use the same engine (`src/dsp/Looper.*`), with one head that reads and writes the same position. In free running mode, the length knob sets the head's speed. In tempo sync mode, the head's position comes from the host's musical position, which also gives the repitching and keeps the loop on the grid.
+- **Sound at high tape speed:** the head fills every cell it passes, so audio recorded at any speed plays back cleanly at that speed. Playing faster than the audio was recorded averages cells to limit aliasing.
+- **Memory in tempo sync mode:** the audio thread can't allocate memory, so a background thread allocates the tape when you enter this mode: enough for 64 bars at the current tempo, plus 25%. That's about 61 MB at 120 BPM in 4/4 at 48 kHz. A tape stays the same size once a loop is on it, so if the tempo has dropped a lot, a long recording can end early when the tape runs out.
+- **Running while Cubase is idle:** Cubase can suspend plug-ins that receive no audio, which would stop the tape. The plug-in returns `kInfiniteTail` from `getTailSamples` to prevent this.
+- **Latency:** each saturator adds a constant 48 samples whether it's on or off, for a total of 96 samples reported to Cubase. The latency stays the same at every sample rate, so it lasts 2 ms at 48 kHz. The looper's head accounts for the first saturator's 48 samples, and the dry signal is delayed by 48 samples to line up with the post saturator's output.
 - **Aliasing limits:** at 4x oversampling, smooth curves are very clean: Soft saturator at 14 kHz with 12 dB of drive has its worst alias at about -79 dB. Modes with sharp corners are less clean at extremes: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB, compared with -10 dB without oversampling. Higher oversampling would reduce this, at a higher CPU cost.
-- **Project size:** the loop is stored in the plug-in state, so a long loop adds its full size to the project file (49 MB for the 120 BPM example above). Only the used part of the buffer needs saving.
-- **Sharing audio with the UI:** the waveform and the drag both need the audio held by the processor, so the processor and UI will share memory directly. This means removing the `Vst::kDistributable` flag from `src/PluginEntry.cpp`.
+- **Project size:** the loop is stored in the plug-in state, so a long loop adds its full size to the project file (49 MB for the 120 BPM example above). Only the used part of the tape is saved.
+- **Sharing audio with the UI:** the waveform and the drag both need the audio held by the processor, so the processor and UI share memory directly through `LooperBridge`. For this reason, the plug-in isn't marked as distributable.
+- **Looper buttons:** these are VST3 messages rather than parameters, so they can't be automated. The mode control can't be automated either, because switching modes clears the loop.

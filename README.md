@@ -1,6 +1,8 @@
 # LoopTexturer
 
-A VST3 insert plug-in, built directly on the Steinberg VST3 SDK. The target DAW is Cubase.
+A VST3 insert plug-in for sound design in Cubase, combining an effects chain with a tape-style looper. It's built directly on the Steinberg VST3 SDK.
+
+`docs/signal-path.md` describes the signal chain and how each module behaves.
 
 ## Requirements
 
@@ -37,19 +39,24 @@ Close Cubase, then run this from an elevated PowerShell in the project folder:
 Copy-Item -Recurse -Force build/VST3/Release/LoopTexturer.vst3 "C:\Program Files\Common Files\VST3\"
 ```
 
-## Testing the drag
+## Using the looper
 
-1. Open Cubase and add LoopTexturer as an insert on any audio track.
-2. Drag from the plug-in window onto an audio track in the project window.
-3. Check that a 2-second clip of a 440 Hz tone appears where you dropped it.
+**Free running** works like an endless tape loop, whether or not Cubase is playing:
 
-The plug-in window shows the result of each drag. "Dropped" means the target accepted the file.
+- Length sets the tape speed, so changing it repitches the loop.
+- Rec replaces what's on the tape until you press it again. Overdub adds to it in the same way.
 
-The test file is created on the first drag at `%LOCALAPPDATA%\LoopTexturer\drag-test.wav`. It's 48 kHz, so Cubase may offer to convert it in a project at another sample rate.
+**Tempo sync** follows the Cubase transport:
 
-## How the drag works
+- Choose a length in bars, or Open to end the recording yourself. The maximum is 64 bars.
+- Rec and Play start at the next bar line. Overdub starts right away.
+- A tempo change repitches the loop.
 
-VST3 has no drag and drop API. The plug-in writes a WAV file and starts an ordinary operating system file drag using VSTGUI, so Cubase handles it like a file dragged from Explorer.
+In both modes:
+
+- Feedback at 100% leaves the loop unchanged. Lower values fade it, and values above 100% push it into distortion. Either way, this keeps changing the loop on every pass.
+- Dry/wet at 50% plays both the live input and the loop at full level.
+- Drag the waveform to the Cubase timeline to get the loop as you hear it, as a WAV file. These files are kept in `%LOCALAPPDATA%\LoopTexturer\Exports`.
 
 ## Project layout
 
@@ -58,20 +65,13 @@ VST3 has no drag and drop API. The plug-in writes a WAV file and starts an ordin
 | `src/PluginConfig.h` | Plug-in name, vendor details and class IDs |
 | `src/PluginEntry.cpp` | VST3 module entry, registers the classes below |
 | `src/Parameters.*` | Parameter IDs, ranges and text, plus saving and loading their values |
-| `src/Processor.*` | Runs the signal chain |
+| `src/Processor.*` | Runs the signal chain, and saves and restores the loop |
 | `src/Controller.*` | Registers the parameters and creates the editor |
-| `src/Editor.*` | The single-panel plug-in window and the drag test area |
-| `src/dsp/` | LFO, filter, saturator, oversampler and parameter smoothing |
-| `src/DragTestFile.*` | Writes the test WAV |
-
-`docs/signal-path.md` describes the signal chain and the planned design.
-
-## Not implemented yet
-
-- The looper, and the dry/wet control that goes with it.
-- Recording audio and writing it to a WAV. `DragTestFile` is a stand-in for this.
-
-Before release, replace the placeholder vendor details in `src/PluginConfig.h`.
+| `src/Editor.*` | The single-panel plug-in window, including the waveform and drag |
+| `src/LooperBridge.*` | What the processor and the UI share: the looper's status and audio |
+| `src/LoopExport.*` | Writes the loop as heard to a WAV file |
+| `src/Messages.h` | VST3 message names between the processor and the controller |
+| `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
 
 ## Licence
 

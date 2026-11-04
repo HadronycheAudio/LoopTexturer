@@ -1,13 +1,20 @@
 #include "Editor.h"
 
-#include "DragTestFile.h"
+#include "Controller.h"
+#include "LoopExport.h"
+#include "LooperBridge.h"
 #include "Parameters.h"
+#include "dsp/Looper.h"
 
 #include "pluginterfaces/base/ustring.h"
 #include "vstgui/lib/cdropsource.h"
 #include "vstgui/vstgui.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <string>
+#include <utility>
 
 using namespace VSTGUI;
 
@@ -20,7 +27,7 @@ constexpr int kGap = 6;
 constexpr int kColumnWidth = 66;
 constexpr int kSectionPadding = 6;
 constexpr int kSectionHeight = 148;
-constexpr int kStripHeight = 84;
+constexpr int kLooperHeight = 148;
 constexpr int kKnobSize = 44;
 
 constexpr int kTitleRowOffset = 4;
@@ -29,13 +36,27 @@ constexpr int kMenuRowHeight = 20;
 constexpr int kKnobRowOffset = 52;
 constexpr int kLabelHeight = 14;
 
+constexpr auto kMessageDuration = std::chrono::seconds (3);
+
+constexpr int kButtonWidth = 70;
+constexpr int kButtonGap = 4;
+
+// Tags for controls that aren't parameters.
+constexpr int kTagRec = 1000;
+constexpr int kTagOverdub = 1001;
+constexpr int kTagPlay = 1002;
+constexpr int kTagStop = 1003;
+constexpr int kTagClear = 1004;
+constexpr int kTagConfirmMode = 1005;
+constexpr int kTagCancelMode = 1006;
+
 constexpr int sectionWidth (int columns)
 {
     return columns * kColumnWidth + 2 * kSectionPadding;
 }
 
 constexpr int kEditorWidth = 2 * kMargin + 5 * kGap + sectionWidth (1) + sectionWidth (3) + sectionWidth (4) + sectionWidth (2) + sectionWidth (2) + sectionWidth (1);
-constexpr int kEditorHeight = 2 * kMargin + kGap + kSectionHeight + kStripHeight;
+constexpr int kEditorHeight = 2 * kMargin + kGap + kSectionHeight + kLooperHeight;
 
 const CColor kPanelColor (28, 31, 36);
 const CColor kSectionColor (42, 47, 55);
@@ -43,6 +64,9 @@ const CColor kFrameColor (70, 78, 90);
 const CColor kAccentColor (232, 160, 70);
 const CColor kTextColor (225, 228, 232);
 const CColor kDimTextColor (160, 166, 175);
+const CColor kFaintTextColor (95, 100, 108);
+const CColor kWaveColor (120, 160, 205);
+const CColor kHeldColor (58, 72, 92);
 
 // A titled background box. Controls are added on top of it.
 class SectionView : public CView
@@ -87,33 +111,82 @@ CTextLabel* createLabel (const CRect& area, const char* text, const CColor& colo
     return label;
 }
 
-// Drags a WAV file out of the plug-in as an ordinary operating system file drag. VST3 has no
-// drag API of its own, so the host just sees a file being dropped on it.
-class DragSourceView : public CView
+std::string describeStatus (const LooperBridge::Status& status)
+{
+    if (status.isSyncMode.load ())
+    {
+        const bool isRunning = status.isTransportRunning.load ();
+        if (status.isArmed.load ())
+            return isRunning ? "Rec: waiting for the next bar" : "Rec: waiting for the transport";
+        if (status.isClosing.load ())
+            return "Recording: ends at the next bar";
+        if (status.isRecording.load ())
+            return "Recording";
+        if (status.isPlayArmed.load ())
+            return "Play: waiting for the next bar";
+        if (status.transportJumped.load () && !status.hasContent.load ())
+            return "Recording cancelled: the transport jumped";
+        if (!status.hasContent.load ())
+            return "Empty: press Rec";
+        if (status.isOverdubbing.load ())
+            return "Overdubbing";
+        if (!isRunning)
+            return "Waiting for the transport";
+        return status.isPlaying.load () ? "Playing: drag to the timeline" : "Stopped";
+    }
+
+    if (status.isRecording.load ())
+        return "Recording";
+    if (status.isOverdubbing.load ())
+        return "Overdubbing";
+    return status.hasContent.load () ? "Looping: drag to the timeline" : "Empty: press Rec";
+}
+
+} // namespace
+
+// Draws the loop's waveform and playhead, and drags the loop out of the plug-in as an ordinary
+// operating system file drag. VST3 has no drag API of its own, so the host just sees a file being
+// dropped on it.
+class WaveformView : public CView
 {
 public:
-    explicit DragSourceView (const CRect& size) : CView (size) {}
+    WaveformView (const CRect& size, Controller& controller) : CView (size), _controller (controller) {}
+
+    void setConfirming (bool isConfirming)
+    {
+        _isConfirming = isConfirming;
+        invalid ();
+    }
 
     void draw (CDrawContext* context) override
     {
         const auto bounds = getViewSize ();
-        context->setFillColor (_isHeld ? CColor (70, 110, 160) : kSectionColor);
+        context->setFillColor (_isHeld ? kHeldColor : kPanelColor);
         context->setFrameColor (kFrameColor);
         context->setLineWidth (1.0);
         context->drawRect (bounds, kDrawFilledAndStroked);
 
-        context->setFont (kNormalFont);
-        context->setFontColor (kTextColor);
-        context->drawString (_status.data (), bounds);
+        const auto bridge = _controller.getLooperBridge ();
+        if (!bridge)
+        {
+            drawText (context, bounds, "The looper isn't connected to the processor");
+            setDirty (false);
+            return;
+        }
 
+        if (const auto tape = bridge->getActiveTape ())
+            drawWaveform (context, bounds, *tape, bridge->status);
+
+        drawText (context, bounds, statusText (bridge->status));
         setDirty (false);
     }
 
     void onMouseDownEvent (MouseDownEvent& event) override
     {
-        if (!event.buttonState.isLeft ())
+        if (!event.buttonState.isLeft () || _isConfirming)
             return;
 
+        _message.clear ();
         _dragStart.init (event.mousePosition);
         _isHeld = true;
         invalid ();
@@ -144,25 +217,106 @@ public:
     }
 
 private:
+    std::string statusText (const LooperBridge::Status& status) const
+    {
+        if (_isConfirming)
+            return "Switching mode clears the loop";
+
+        const bool showsMessage = !_message.empty () && std::chrono::steady_clock::now () - _messageTime < kMessageDuration;
+        return showsMessage ? _message : describeStatus (status);
+    }
+
+    static void drawText (CDrawContext* context, const CRect& bounds, const std::string& text)
+    {
+        auto area = bounds;
+        area.setHeight (18);
+        area.inset (6, 2);
+        context->setFont (kNormalFontSmall);
+        context->setFontColor (kTextColor);
+        context->drawString (text.c_str (), area, kLeftText);
+    }
+
+    static void drawWaveform (CDrawContext* context, const CRect& bounds, const Tape& tape, const LooperBridge::Status& status)
+    {
+        const int64_t frames = status.displayFrames.load ();
+        if (frames <= 0)
+            return;
+
+        const int64_t bucketFrames = tape.getBucketFrames ();
+        const double middle = (bounds.top + bounds.bottom) / 2.0;
+        const double scale = (bounds.getHeight () - 2.0) / 2.0;
+        const int width = static_cast<int> (bounds.getWidth ());
+
+        const auto columnBucket = [&] (int column) {
+            const auto frame = static_cast<int64_t> (static_cast<double> (column) / width * static_cast<double> (frames));
+            return std::min (frame / bucketFrames, Tape::kOverviewBuckets - 1);
+        };
+
+        context->setDrawMode (kAliasing);
+        context->setLineStyle (kLineSolid);
+        context->setLineWidth (1.0);
+        context->setFrameColor (kWaveColor);
+        for (int column = 0; column < width; ++column)
+        {
+            const int64_t first = columnBucket (column);
+            const int64_t last = std::max (first, columnBucket (column + 1) - 1);
+            float low = 0.0f;
+            float high = 0.0f;
+            for (int64_t bucket = first; bucket <= last; ++bucket)
+            {
+                low = std::min (low, tape.getOverviewMin (bucket));
+                high = std::max (high, tape.getOverviewMax (bucket));
+            }
+
+            const double x = bounds.left + column + 0.5;
+            const double top = middle - std::clamp (static_cast<double> (high), -1.0, 1.0) * scale;
+            const double bottom = middle - std::clamp (static_cast<double> (low), -1.0, 1.0) * scale;
+            context->drawLine (std::make_pair (CPoint (x, top), CPoint (x, std::max (bottom, top + 1.0))));
+        }
+
+        const double playhead = std::clamp (status.playhead.load () / static_cast<double> (frames), 0.0, 1.0);
+        const double x = std::floor (bounds.left + playhead * width) + 0.5;
+        context->setFrameColor (kAccentColor);
+        context->drawLine (std::make_pair (CPoint (x, bounds.top + 1.0), CPoint (x, bounds.bottom - 1.0)));
+    }
+
     void release ()
     {
         _isHeld = false;
         invalid ();
     }
 
-    void setStatus (UTF8StringPtr status)
+    void showMessage (const char* message)
     {
-        _status = status;
+        _message = message;
+        _messageTime = std::chrono::steady_clock::now ();
         invalid ();
     }
 
     void startDrag ()
     {
-        // Checked on every drag, because the drop target may have moved the file away.
-        const auto path = ensureDragTestFile ();
+        const auto bridge = _controller.getLooperBridge ();
+        if (!bridge || !bridge->status.hasContent.load () || bridge->status.loopFrames.load () <= 0)
+        {
+            showMessage ("Nothing to drag: the loop is empty");
+            return;
+        }
+
+        const auto plain = [this] (ParamId id) {
+            return normalizedToPlain (getParamSpec (id), _controller.getParamNormalized (id));
+        };
+
+        LoopExportSettings settings {};
+        settings.postSaturatorOn = plain (kPostSatOn) > 0.5;
+        settings.postSaturatorMode = static_cast<int> (plain (kPostSatMode));
+        settings.postSaturatorDriveDb = plain (kPostSatDrive);
+        settings.postSaturatorMix = plain (kPostSatMix) / 100.0;
+        settings.freeLengthSeconds = plain (kLooperFreeLength);
+
+        const auto path = exportLoop (*bridge, settings);
         if (path.empty ())
         {
-            setStatus ("Could not write the test WAV");
+            showMessage ("Could not write the WAV file");
             return;
         }
 
@@ -171,22 +325,23 @@ private:
 
         // Reports the result of the drag. It holds a reference so the view outlives the drag.
         auto callback = makeOwned<DragCallbackFunctions> ();
-        callback->endedFunc = [self = SharedPointer<DragSourceView> (this)] (IDraggingSession*, CPoint, DragOperation result) {
-            self->setStatus (result == DragOperation::None ? "No drop: drag again" : "Dropped: target accepted the file");
+        callback->endedFunc = [self = SharedPointer<WaveformView> (this)] (IDraggingSession*, CPoint, DragOperation result) {
+            self->showMessage (result == DragOperation::None ? "No drop: drag again" : "Dropped: the target accepted the file");
         };
 
         if (!doDrag (DragDescription (package), callback))
-            setStatus ("Could not start the drag");
+            showMessage ("Could not start the drag");
     }
 
+    Controller& _controller;
     DragStartMouseObserver _dragStart;
     bool _isHeld { false };
-    UTF8String _status { "Looper goes here. For now: drag from here to the Cubase timeline" };
+    bool _isConfirming { false };
+    std::string _message;
+    std::chrono::steady_clock::time_point _messageTime;
 };
 
-} // namespace
-
-Editor::Editor (void* controller) : VSTGUIEditor (controller)
+Editor::Editor (Controller* controller) : VSTGUIEditor (controller), _controller (controller)
 {
     Steinberg::ViewRect size (0, 0, kEditorWidth, kEditorHeight);
     setRect (size);
@@ -202,9 +357,10 @@ void Editor::addRowLabel (const CRect& area, const char* text)
     frame->addView (createLabel (area, text, kDimTextColor, kRightText));
 }
 
-void Editor::addKnob (int x, int y, Steinberg::Vst::ParamID id, const char* title, bool bipolar)
+Editor::ViewGroup Editor::addKnob (int x, int y, Steinberg::Vst::ParamID id, const char* title, bool bipolar)
 {
-    frame->addView (createLabel (CRect (x, y, x + kColumnWidth, y + kLabelHeight), title, kDimTextColor));
+    auto* titleLabel = createLabel (CRect (x, y, x + kColumnWidth, y + kLabelHeight), title, kDimTextColor);
+    frame->addView (titleLabel);
 
     const int knobX = x + (kColumnWidth - kKnobSize) / 2;
     const int knobY = y + kLabelHeight + 2;
@@ -230,9 +386,10 @@ void Editor::addKnob (int x, int y, Steinberg::Vst::ParamID id, const char* titl
     frame->addView (value);
 
     _bindings.push_back ({ knob, value });
+    return { titleLabel, knob, value };
 }
 
-void Editor::addMenu (const CRect& area, Steinberg::Vst::ParamID id)
+CControl* Editor::addMenu (const CRect& area, Steinberg::Vst::ParamID id)
 {
     auto* menu = new COptionMenu (area, this, static_cast<int32_t> (id));
     const auto& spec = getParamSpec (id);
@@ -248,6 +405,7 @@ void Editor::addMenu (const CRect& area, Steinberg::Vst::ParamID id)
     frame->addView (menu);
 
     _bindings.push_back ({ menu, nullptr });
+    return menu;
 }
 
 void Editor::addToggle (const CRect& area, Steinberg::Vst::ParamID id, const char* title)
@@ -261,6 +419,59 @@ void Editor::addToggle (const CRect& area, Steinberg::Vst::ParamID id, const cha
     frame->addView (toggle);
 
     _bindings.push_back ({ toggle, nullptr });
+}
+
+CTextButton* Editor::addButton (const CRect& area, int tag, const char* title)
+{
+    auto* button = new CTextButton (area, this, tag, title);
+    button->setFont (kNormalFontSmall);
+    button->setRoundRadius (3.0);
+    button->setFrameColor (kFrameColor);
+    button->setTextColor (kTextColor);
+    frame->addView (button);
+    return button;
+}
+
+void Editor::addLooperSection (int top)
+{
+    const CRect section (kMargin, top, kEditorWidth - kMargin, top + kLooperHeight);
+    addSection (section, "Looper");
+
+    const int left = kMargin + kSectionPadding;
+    const int menuY = top + kMenuRowOffset;
+    const int knobY = top + kKnobRowOffset;
+
+    addMenu (CRect (left, menuY, left + kColumnWidth + 30, menuY + kMenuRowHeight), kLooperMode);
+    _barsMenu = addMenu (CRect (left + kColumnWidth + 34, menuY, left + 3 * kColumnWidth, menuY + kMenuRowHeight), kLooperBars);
+
+    // These two share a column, because only one of them applies at a time.
+    _freeOnlyViews = addKnob (left, knobY, kLooperFreeLength, "Length");
+    _customBarsViews = addKnob (left, knobY, kLooperCustomBars, "Custom bars");
+    addKnob (left + kColumnWidth, knobY, kLooperFeedback, "Feedback");
+    addKnob (left + 2 * kColumnWidth, knobY, kLooperDryWet, "Dry/wet");
+
+    const int rightLeft = left + 3 * kColumnWidth + kGap;
+    const int rightEnd = kEditorWidth - kMargin - kSectionPadding;
+
+    const auto buttonArea = [&] (int index) {
+        const int x = rightLeft + index * (kButtonWidth + kButtonGap);
+        return CRect (x, menuY, x + kButtonWidth, menuY + kMenuRowHeight);
+    };
+    _recButton = addButton (buttonArea (0), kTagRec, "Rec");
+    _overdubButton = addButton (buttonArea (1), kTagOverdub, "Overdub");
+    _playButton = addButton (buttonArea (2), kTagPlay, "Play");
+    _stopButton = addButton (buttonArea (3), kTagStop, "Stop");
+    addButton (buttonArea (4), kTagClear, "Clear");
+
+    const CRect waveformArea (rightLeft, knobY, rightEnd, top + kLooperHeight - kSectionPadding);
+    _waveform = new WaveformView (waveformArea, *_controller);
+    frame->addView (_waveform);
+
+    // Shown over the waveform when a mode change needs confirming.
+    const int confirmY = knobY + 26;
+    _confirmButton = addButton (CRect (rightLeft + 6, confirmY, rightLeft + 126, confirmY + kMenuRowHeight), kTagConfirmMode, "Clear and switch");
+    _cancelButton = addButton (CRect (rightLeft + 132, confirmY, rightLeft + 212, confirmY + kMenuRowHeight), kTagCancelMode, "Cancel");
+    showModeConfirmation (false);
 }
 
 bool PLUGIN_API Editor::open (void* parent, const PlatformType& platformType)
@@ -325,8 +536,7 @@ bool PLUGIN_API Editor::open (void* parent, const PlatformType& platformType)
         addKnob (left, knobY, kVolume, "Volume");
     }
 
-    const int stripTop = top + kSectionHeight + kGap;
-    frame->addView (new DragSourceView (CRect (kMargin, stripTop, kEditorWidth - kMargin, stripTop + kStripHeight)));
+    addLooperSection (top + kSectionHeight + kGap);
 
     if (!frame->open (parent, platformType))
     {
@@ -338,7 +548,7 @@ bool PLUGIN_API Editor::open (void* parent, const PlatformType& platformType)
 
     syncControls ();
 
-    // Keeps the panel up to date with automation and state changes from the host.
+    // Keeps the panel up to date with automation, state changes and the looper.
     _syncTimer = makeOwned<CVSTGUITimer> ([this] (CVSTGUITimer*) { syncControls (); }, 33);
     return true;
 }
@@ -347,6 +557,16 @@ void PLUGIN_API Editor::close ()
 {
     _syncTimer = nullptr;
     _bindings.clear ();
+    _freeOnlyViews.clear ();
+    _customBarsViews.clear ();
+    _barsMenu = nullptr;
+    _recButton = nullptr;
+    _overdubButton = nullptr;
+    _playButton = nullptr;
+    _stopButton = nullptr;
+    _confirmButton = nullptr;
+    _cancelButton = nullptr;
+    _waveform = nullptr;
 
     if (frame)
     {
@@ -357,14 +577,10 @@ void PLUGIN_API Editor::close ()
 
 void Editor::syncControls ()
 {
-    auto* editController = getController ();
-    if (!editController)
-        return;
-
     for (const auto& binding : _bindings)
     {
         const auto id = static_cast<Steinberg::Vst::ParamID> (binding.control->getTag ());
-        const auto value = editController->getParamNormalized (id);
+        const auto value = _controller->getParamNormalized (id);
 
         if (std::abs (binding.control->getValueNormalized () - static_cast<float> (value)) > 1e-5f)
         {
@@ -375,7 +591,7 @@ void Editor::syncControls ()
         if (binding.valueLabel)
         {
             Steinberg::Vst::String128 text {};
-            editController->getParamStringByValue (id, value, text);
+            _controller->getParamStringByValue (id, value, text);
 
             char ascii[128] {};
             Steinberg::UString (text, str16BufferSize (Steinberg::Vst::String128)).toAscii (ascii, sizeof (ascii));
@@ -390,28 +606,111 @@ void Editor::syncControls ()
             binding.valueLabel->setText (display);
         }
     }
+
+    syncLooper ();
+}
+
+void Editor::syncLooper ()
+{
+    const auto plain = [this] (ParamId id) {
+        return normalizedToPlain (getParamSpec (id), _controller->getParamNormalized (id));
+    };
+
+    const bool isSync = plain (kLooperMode) > 0.5;
+    const bool showsCustomBars = isSync && static_cast<int> (plain (kLooperBars)) == kBarsCustom;
+
+    for (auto* view : _freeOnlyViews)
+        view->setVisible (!isSync);
+    for (auto* view : _customBarsViews)
+        view->setVisible (showsCustomBars);
+    _barsMenu->setVisible (isSync);
+
+    // The tape never stops in free running mode, so these don't apply.
+    _playButton->setVisible (isSync);
+    _stopButton->setVisible (isSync);
+
+    if (const auto bridge = _controller->getLooperBridge ())
+    {
+        const auto& status = bridge->status;
+        const bool isRecording = status.isRecording.load () || status.isArmed.load () || status.isClosing.load ();
+        _recButton->setTextColor (isRecording ? kAccentColor : kTextColor);
+        _overdubButton->setTextColor (status.isOverdubbing.load () ? kAccentColor : kTextColor);
+        _playButton->setTextColor (status.isPlaying.load () || status.isPlayArmed.load () ? kAccentColor : kTextColor);
+    }
+
+    _waveform->invalid ();
+}
+
+void Editor::setParameter (Steinberg::Vst::ParamID id, double normalized)
+{
+    _controller->beginEdit (id);
+    _controller->setParamNormalized (id, normalized);
+    _controller->performEdit (id, normalized);
+    _controller->endEdit (id);
+}
+
+void Editor::showModeConfirmation (bool show)
+{
+    _confirmButton->setVisible (show);
+    _cancelButton->setVisible (show);
+    _waveform->setConfirming (show);
 }
 
 void Editor::valueChanged (CControl* control)
 {
-    auto* editController = getController ();
-    if (!editController)
-        return;
+    const int tag = control->getTag ();
 
-    const auto id = static_cast<Steinberg::Vst::ParamID> (control->getTag ());
+    if (tag >= kTagRec && tag <= kTagCancelMode)
+    {
+        // Kick buttons report being pressed and then released.
+        if (control->getValue () < 0.5f)
+            return;
+
+        switch (tag)
+        {
+            case kTagRec: _controller->sendLooperCommand (Looper::kCommandRec); break;
+            case kTagOverdub: _controller->sendLooperCommand (Looper::kCommandOverdub); break;
+            case kTagPlay: _controller->sendLooperCommand (Looper::kCommandPlay); break;
+            case kTagStop: _controller->sendLooperCommand (Looper::kCommandStop); break;
+            case kTagClear: _controller->sendLooperCommand (Looper::kCommandClear); break;
+            case kTagConfirmMode:
+                setParameter (kLooperMode, _pendingMode);
+                showModeConfirmation (false);
+                break;
+            case kTagCancelMode: showModeConfirmation (false); break;
+        }
+        return;
+    }
+
+    const auto id = static_cast<Steinberg::Vst::ParamID> (tag);
     const double value = control->getValueNormalized ();
-    editController->setParamNormalized (id, value);
-    editController->performEdit (id, value);
+
+    if (id == kLooperMode)
+    {
+        const auto bridge = _controller->getLooperBridge ();
+        if (bridge && bridge->status.hasContent.load ())
+        {
+            // The menu goes back to the current mode by itself, until this is confirmed.
+            _pendingMode = value;
+            showModeConfirmation (true);
+            return;
+        }
+    }
+
+    _controller->setParamNormalized (id, value);
+    _controller->performEdit (id, value);
 }
 
 void Editor::controlBeginEdit (CControl* control)
 {
-    beginEdit (control->getTag ());
+    if (control->getTag () < kParamCount)
+        beginEdit (control->getTag ());
 }
 
 void Editor::controlEndEdit (CControl* control)
 {
-    endEdit (control->getTag ());
+    if (control->getTag () < kParamCount)
+        endEdit (control->getTag ());
 }
 
 } // namespace LoopTexturer

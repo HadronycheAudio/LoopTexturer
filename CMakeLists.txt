@@ -29,6 +29,11 @@ smtg_add_vst3plugin(LoopTexturer
     SOURCES_LIST
         src/PluginConfig.h
         src/PluginEntry.cpp
+        src/Messages.h
+        src/LooperBridge.h
+        src/LooperBridge.cpp
+        src/LoopExport.h
+        src/LoopExport.cpp
         src/Parameters.h
         src/Parameters.cpp
         src/Processor.h
@@ -37,13 +42,14 @@ smtg_add_vst3plugin(LoopTexturer
         src/Controller.cpp
         src/Editor.h
         src/Editor.cpp
-        src/DragTestFile.h
-        src/DragTestFile.cpp
         src/dsp/Lfo.h
+        src/dsp/Looper.h
+        src/dsp/Looper.cpp
         src/dsp/Oversampler.h
         src/dsp/Saturator.h
         src/dsp/Smoother.h
         src/dsp/StateVariableFilter.h
+        src/dsp/Tape.h
 )
 
 target_include_directories(LoopTexturer PRIVATE src)
