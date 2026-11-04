@@ -2,6 +2,8 @@
 
 Specification of the signal chain and UI. **Requirement** marks what has been decided, and **Proposed** marks suggestions that aren't confirmed.
 
+**Status:** Gain, Pan, Filter, both saturators, Volume and the panel are implemented, using the proposed values below. The looper, dry/wet and the real drag export are not implemented yet.
+
 LoopTexturer is mainly a sound design tool rather than a performance tool, so some latency is acceptable.
 
 ## Signal path
@@ -209,6 +211,7 @@ VST3 has no API for this. The plug-in writes a WAV file and starts an operating 
 - **Sound at high tape speed:** repitching needs an interpolating read, and high speeds need filtering to limit aliasing.
 - **Memory in tempo sync mode:** the audio thread can't allocate memory, and reserving 64 bars up front would be costly at slow tempos. A background thread can add memory in chunks ahead of the recording, so only what's used gets allocated.
 - **Running while Cubase is idle:** Cubase can suspend plug-ins that receive no audio, which would stop the tape. The plug-in will return `kInfiniteTail` from `getTailSamples`, and this needs checking in Cubase.
-- **Latency and the loop:** oversampling delay has to be accounted for in two places, so that the loop doesn't drift off the grid and doesn't shift a little on every feedback pass.
+- **Latency:** each saturator adds a constant 48 samples whether it's on or off, for a total of 96 samples reported to Cubase. The latency stays the same at every sample rate, so it lasts 2 ms at 48 kHz. The looper's position has to account for it to stay on the grid, and the dry signal has to be delayed by 48 samples to line up with the post saturator's output.
+- **Aliasing limits:** at 4x oversampling, smooth curves are very clean: Soft saturator at 14 kHz with 12 dB of drive has its worst alias at about -79 dB. Modes with sharp corners are less clean at extremes: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB, compared with -10 dB without oversampling. Higher oversampling would reduce this, at a higher CPU cost.
 - **Project size:** the loop is stored in the plug-in state, so a long loop adds its full size to the project file (49 MB for the 120 BPM example above). Only the used part of the buffer needs saving.
 - **Sharing audio with the UI:** the waveform and the drag both need the audio held by the processor, so the processor and UI will share memory directly. This means removing the `Vst::kDistributable` flag from `src/PluginEntry.cpp`.

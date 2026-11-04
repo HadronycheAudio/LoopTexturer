@@ -6,7 +6,7 @@
 
 namespace LoopTexturer {
 
-// The VST3 edit controller: register parameters in initialize (), and the host gets the UI from createView ().
+// The VST3 edit controller: registers the parameters and creates the editor.
 class Controller : public Steinberg::Vst::EditController
 {
 public:
@@ -17,6 +17,7 @@ public:
     }
 
     Steinberg::tresult PLUGIN_API initialize (Steinberg::FUnknown* context) SMTG_OVERRIDE;
+    Steinberg::tresult PLUGIN_API setComponentState (Steinberg::IBStream* state) SMTG_OVERRIDE;
     Steinberg::IPlugView* PLUGIN_API createView (Steinberg::FIDString name) SMTG_OVERRIDE;
 };
 

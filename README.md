@@ -57,15 +57,19 @@ VST3 has no drag and drop API. The plug-in writes a WAV file and starts an ordin
 | --- | --- |
 | `src/PluginConfig.h` | Plug-in name, vendor details and class IDs |
 | `src/PluginEntry.cpp` | VST3 module entry, registers the classes below |
-| `src/Processor.*` | Audio processing, currently a pass-through |
-| `src/Controller.*` | Parameters, and creates the editor |
-| `src/Editor.*` | Plug-in window and the drag test area |
+| `src/Parameters.*` | Parameter IDs, ranges and text, plus saving and loading their values |
+| `src/Processor.*` | Runs the signal chain |
+| `src/Controller.*` | Registers the parameters and creates the editor |
+| `src/Editor.*` | The single-panel plug-in window and the drag test area |
+| `src/dsp/` | LFO, filter, saturator, oversampler and parameter smoothing |
 | `src/DragTestFile.*` | Writes the test WAV |
+
+`docs/signal-path.md` describes the signal chain and the planned design.
 
 ## Not implemented yet
 
+- The looper, and the dry/wet control that goes with it.
 - Recording audio and writing it to a WAV. `DragTestFile` is a stand-in for this.
-- Parameters and saved state.
 
 Before release, replace the placeholder vendor details in `src/PluginConfig.h`.
 
