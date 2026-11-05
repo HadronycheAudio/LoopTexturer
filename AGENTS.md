@@ -28,11 +28,19 @@ cmake --build build --config Debug --target LoopTexturer
 # Run the validator on its own, for example with extra output
 build/bin/Release/validator.exe build/VST3/Release/LoopTexturer.vst3
 
+# Build and run all the tests, which takes about 10 seconds in Release
+cmake --build build --config Release --target LoopTexturerTests
+ctest --test-dir build -C Release --output-on-failure -j 4
+
+# Run a single test, and list them
+ctest --test-dir build -C Release --output-on-failure -R "^sync-grid$"
+ctest --test-dir build -C Release -N
+
 # Install for testing in Cubase. Close Cubase first, and use an elevated shell.
 Copy-Item -Recurse -Force build/VST3/Release/LoopTexturer.vst3 "C:\Program Files\Common Files\VST3\"
 ```
 
-There is no linter, formatter or test suite in this repository, so there's no way to run a single test. See [Verifying a change](#verifying-a-change).
+There's no linter or formatter.
 
 Follow the existing style, which comes from the SDK: a space before call parentheses (`foo (x)`), `_member` for private members, `kName` for constants, and comments that explain why rather than what.
 
@@ -140,36 +148,37 @@ A locate during a recording's first pass cancels it, because its length isn't se
 
 ## Verifying a change
 
-Building only proves that the plug-in follows the VST3 rules. The validator doesn't check sound, the looper, the panel or saved loops, and it runs with no transport.
+Before calling a change done:
 
-There are no tests in the repository, so check behaviour directly, in proportion to the change:
+1. **Build Debug and Release, and run the tests on both.** The validator runs as part of the build, but it only proves that the plug-in follows the VST3 rules. It doesn't check sound, the looper, the panel or saved loops.
+2. **Add a test for any new behaviour,** and check that it fails without your change.
+3. **Test it in Cubase** if you can, or say clearly that you couldn't. The tests simulate a host, and nothing here has been measured for how it sounds. Don't report behaviour you haven't observed as working.
 
-1. **Build both Debug and Release.** Both must finish with no compiler errors, and the validator must pass.
-2. **Measure anything that changes the audio.** Write a small throwaway host that loads the built plug-in through the VST3 interfaces and measures its output. Keep it out of the repository unless asked to add it.
-3. **Test it in Cubase** if you can, or say clearly that you couldn't. Don't report behaviour you haven't observed as working.
+### The tests
 
-If you write such a host:
+`tests/` builds one program, `LoopTexturerTests`, which loads the built plug-in and drives it through the VST3 interfaces, the way Cubase does. It doesn't link the plug-in's code, so tests can only see what a host can.
 
-- It has to provide `IHostApplication` so that `allocateMessage` works, and connect the processor and controller through `IConnectionPoint`.
-- It usually runs faster than real time, so allow for the worker thread: sleep after entering tempo sync, with a valid tempo in `ProcessContext`, before pressing Rec.
-- Let the speed settle for about 0.8 s after changing the free running length, before recording.
-- `DoDragDrop` only wakes on mouse input, so a synthetic drag needs mouse messages posted to the thread.
-- Windows can capture the panel with `PrintWindow` and `PW_RENDERFULLCONTENT`, which works on an off-screen window.
-
-These results are known to be correct, and a change shouldn't move them unless that's its purpose:
-
-| Check | Expected |
+| File | Covers |
 | --- | --- |
-| Latency, at 44.1, 48 and 96 kHz, saturators on or off | Reported and measured both exactly 96 samples |
-| Chain with the filter as a 20 Hz high-pass and both saturators off | Unity gain |
-| Pan | Constant power, with both channels unchanged in the centre |
-| Free running: 1 kHz recorded and replayed | 1000.00 Hz, within 0.2 dB, at every length |
-| Length from 2 s to 1 s, or to 4 s | Pitch doubles, or halves |
-| Tempo sync: a click in the recording | Repeats on the exact sample, offset by 96 samples |
-| 100% feedback, including overdubbing silence | Saved audio is byte-identical |
-| 200% feedback | Output stays below about 1.5, with no NaNs and no DC build-up |
-| Saved loop restored at another sample rate | Same pitch |
-| Dragged WAV | Length and pitch match the current speed or tempo |
+| `CompatibilityTests.cpp` | Class IDs, parameter IDs, ranges and list order, and the saved format |
+| `ChainTests.cpp` | Latency, levels, pan, LFOs, filter, saturators and aliasing |
+| `LooperTests.cpp` | Both looper modes, feedback, dry/wet and saved loops |
+| `PanelTest.cpp` | The real editor, driven with mouse messages, including the drag export |
+
+- **Never change an expected value in `CompatibilityTests.cpp` to make a test pass.** Those values are written out by hand on purpose, and a failure there means the change would damage saved projects. Adding new parameters to them is fine, and expected.
+- **Don't loosen a limit elsewhere to get a test passing** without working out why it failed. Several of these numbers come from real bugs.
+- **To add a test,** add it to `Tests.h`, `kTests` in `TestMain.cpp` and `LOOPTEXTURER_TESTS` in `tests/CMakeLists.txt`.
+- **`PanelTest.cpp` clicks fixed positions,** so moving the panel's controls means updating the positions at the top of that file.
+- **Exports go to a temporary folder,** because the program sets `LOCALAPPDATA` before loading the plug-in.
+- **To see the panel,** set `LOOPTEXTURER_SCREENSHOTS` to a folder before running the `panel` test, which saves a BMP at each step.
+- **To measure CPU use,** run `build/bin/Release/LoopTexturerTests.exe <plug-in DLL> cpu`, in a Release build. The DLL is at `build/VST3/Release/LoopTexturer.vst3/Contents/x86_64-win/LoopTexturer.vst3`.
+
+These tests run much faster than real time, which matters when writing new ones:
+
+- Sleep after entering tempo sync, with a valid tempo in `ProcessContext`, so the worker thread can allocate the tape before you press Rec. `useSyncMode` does this.
+- Let the speed settle for about 0.8 s after changing the free running length, before recording. `recordFree` does this.
+- Parameter changes are smoothed over about 20 ms, so allow for that before measuring. Otherwise, an early click can leak through the dry signal.
+- `DoDragDrop` only wakes on mouse input, so a synthetic drag needs mouse messages posted to the thread. `Panel` does this.
 
 ## Known limits
 

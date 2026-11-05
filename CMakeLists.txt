@@ -58,3 +58,7 @@ target_compile_definitions(LoopTexturer PRIVATE
     $<$<PLATFORM_ID:Windows>:NOMINMAX>
 )
 target_link_libraries(LoopTexturer PRIVATE sdk vstgui_support)
+
+# --- Tests --------------------------------------------------------------------
+enable_testing()
+add_subdirectory(tests)

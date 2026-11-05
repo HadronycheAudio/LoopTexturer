@@ -33,6 +33,15 @@ This produces `build/VST3/Release/LoopTexturer.vst3`. Each build also runs the S
 
 To open the project in the Visual Studio IDE, use `build/LoopTexturer.sln`.
 
+## Testing
+
+```powershell
+cmake --build build --config Release --target LoopTexturerTests
+ctest --test-dir build -C Release --output-on-failure -j 4
+```
+
+The tests load the built plug-in and drive it like a host, including its panel. They measure its output and check that it stays compatible with saved projects. They don't touch your mouse or your exports folder. `AGENTS.md` explains how they work.
+
 ## Installing
 
 Close Cubase, then run this from an elevated PowerShell in the project folder:
@@ -77,6 +86,7 @@ In both modes:
 | `src/LoopExport.*` | Writes the loop as heard to a WAV file |
 | `src/Messages.h` | VST3 message names between the processor and the controller |
 | `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
+| `tests/` | Tests that drive the built plug-in like a host |
 
 ## Licence
 
