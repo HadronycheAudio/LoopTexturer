@@ -2,7 +2,7 @@
 
 Guidance for coding agents working in this repository. Read [Rules that protect users' work](#rules-that-protect-users-work) before changing anything.
 
-LoopTexturer is a VST3 insert plug-in for sound design in Cubase on Windows: an effects chain plus a tape-style looper whose audio can be dragged onto the timeline. It uses the Steinberg VST3 SDK and VSTGUI directly. JUCE and ARA were considered and deliberately rejected, so don't reintroduce them.
+LoopTexturer is a VST® 3 insert plug-in for sound design in Cubase on Windows: an effects chain plus a tape-style looper whose audio can be dragged onto the timeline. It uses the Steinberg VST3 SDK and VSTGUI directly. JUCE and ARA were considered and deliberately rejected, so don't reintroduce them.
 
 `docs/signal-path.md` is the behaviour specification. `README.md` covers building and usage.
 
@@ -182,9 +182,28 @@ These tests run much faster than real time, which matters when writing new ones:
 - Parameter changes are smoothed over about 20 ms, so allow for that before measuring. Otherwise, an early click can leak through the dry signal.
 - `DoDragDrop` only wakes on mouse input, so a synthetic drag needs mouse messages posted to the thread. `Panel` does this.
 
+## Releasing
+
+Pushing a tag `v<version>` publishes a release, once everything has passed:
+
+1. Set the version in `project()` in `CMakeLists.txt`. CI fails if the tag doesn't match it.
+2. Add `docs/release-notes/v<version>.md`, which becomes the release's text.
+3. Commit, push, and wait for CI to pass.
+4. Tag that commit and push the tag.
+
+CI builds the installer on every push, installs it on its own machine, runs the validator and all the tests on the installed copy, and uninstalls it. `installer/test-installer.ps1` writes to Program Files, so don't run it on a machine you care about.
+
+Rules for releases:
+
+- **Don't change `AppId` in `installer/LoopTexturer.iss`.** It's how an upgrade finds the previous version.
+- **Keep `SMTG_USE_STATIC_CRT` on.** Without it, the plug-in fails to load on PCs without Microsoft's runtime, and neither the tests nor CI would notice, because that runtime is on those machines. If you configured a build before this option existed, its cached value overrides the default.
+- **The installer must keep shipping the licence files.** The VST 3 SDK's and VSTGUI's licences require their notices to accompany binaries.
+- **Follow Steinberg's usage guidelines** (`external/vst3sdk/VST3_Usage_Guidelines.pdf`) wherever "VST" appears in product-related material: use ® on first mention, include the sentence "VST is a registered trademark of Steinberg Media Technologies GmbH.", show the logo from `docs/images/` unaltered, and don't put "VST" in product or company names.
+
 ## Known limits
 
 - It has only been built and used on Windows, and Cubase is the only host it's been used in.
 - Sample-exact grid alignment assumes that Cubase's reported position refers to the audio entering the plug-in. This hasn't been measured in Cubase, and an error would be at most 96 samples.
 - Modes with sharp corners still alias at extreme settings: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB.
+- The installer isn't code-signed, so Windows warns users when they run it.
 - Starting a drag on a very long loop with the post saturator on can freeze the panel for a few seconds, because the export runs on the UI thread.

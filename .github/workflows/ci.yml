@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: ['**']
+    tags: ['v*']
   pull_request:
 
 permissions:
@@ -35,3 +37,58 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure -j 4
+
+      - name: Read the version
+        id: version
+        if: matrix.config == 'Release'
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(LoopTexturer VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          "version=$version" >> $env:GITHUB_OUTPUT
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            Write-Output "::error::The tag $env:GITHUB_REF_NAME doesn't match the version in CMakeLists.txt, which is $version"
+            exit 1
+          }
+
+      - name: Build the installer
+        if: matrix.config == 'Release'
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\LoopTexturer.iss'
+
+      - name: Test the installer
+        if: matrix.config == 'Release'
+        run: >
+          installer\test-installer.ps1
+          -Installer "build\installer\LoopTexturer-${{ steps.version.outputs.version }}-Setup.exe"
+          -Validator build\bin\Release\validator.exe
+          -Tests build\bin\Release\LoopTexturerTests.exe
+
+      - name: Keep the installer
+        if: matrix.config == 'Release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer
+          path: build/installer/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  # Runs for a version tag, once both builds and the installer have passed.
+  release:
+    name: Release
+    needs: build-and-test
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer
+          path: installer-output
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" installer-output/*.exe --title "LoopTexturer $TAG" --notes-file "docs/release-notes/$TAG.md" --verify-tag

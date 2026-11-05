@@ -1,0 +1,7 @@
+LoopTexturer
+Copyright (c) 2026 Hadronyche
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.
+
+This product is built with the VST 3 SDK and VSTGUI by Steinberg Media Technologies GmbH. Their
+licences are included in this folder, alongside LoopTexturer's own.

@@ -1,10 +1,16 @@
 # LoopTexturer
 
-A VST3 insert plug-in for sound design in Cubase, combining an effects chain with a tape-style looper. It's built directly on the Steinberg VST3 SDK.
+<img src="docs/images/VST_Compatible_Logo_Steinberg_with_TM.png" alt="VST Compatible" width="110">
+
+A VST® 3 insert plug-in for sound design in Cubase, combining an effects chain with a tape-style looper. It's built directly on the Steinberg VST 3 SDK.
 
 `docs/signal-path.md` describes the signal chain and how each module behaves.
 
-## Requirements
+## Download
+
+Get the installer from the [latest release](https://github.com/HadronycheAudio/LoopTexturer/releases/latest). It needs 64-bit Windows 10 or later, and installs to `C:\Program Files\Common Files\VST3`. The installer isn't code-signed, so Windows will probably warn you: choose **More info**, then **Run anyway**.
+
+## Requirements for building
 
 - Visual Studio 2022 with the "Desktop development with C++" workload
 - CMake 3.25 or newer
@@ -42,7 +48,7 @@ ctest --test-dir build -C Release --output-on-failure -j 4
 
 The tests load the built plug-in and drive it like a host, including its panel. They measure its output and check that it stays compatible with saved projects. They don't touch your mouse or your exports folder. `AGENTS.md` explains how they work.
 
-## Installing
+## Installing your own build
 
 Close Cubase, then run this from an elevated PowerShell in the project folder:
 
@@ -87,6 +93,7 @@ In both modes:
 | `src/Messages.h` | VST3 message names between the processor and the controller |
 | `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
 | `tests/` | Tests that drive the built plug-in like a host |
+| `installer/` | The Windows installer, and the script that tests it |
 
 ## Licence
 
@@ -96,3 +103,5 @@ It's built with the following, which keep their own licences:
 
 - VST3 SDK: MIT (`external/vst3sdk/LICENSE.txt`)
 - VSTGUI (`external/vst3sdk/vstgui4/LICENSE`)
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.
