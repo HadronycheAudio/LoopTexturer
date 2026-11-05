@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.config }}
+    # A pull request from this repository already ran on push, so this only adds runs for forks.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    # This image has Visual Studio 2022, which windows-2025 doesn't.
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      # This also runs the Steinberg validator, and a failure fails the build.
+      - name: Build
+        run: cmake --build build --config ${{ matrix.config }} --target LoopTexturerTests -- -m
+
+      - name: Test
+        run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure -j 4

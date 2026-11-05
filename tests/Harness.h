@@ -94,8 +94,9 @@ public:
     Steinberg::Vst::ProcessContext context {};
 };
 
-// Switches to tempo sync, and waits for the worker thread to allocate the tape. Tests run faster
-// than real time, so without this they would press Rec before the tape exists.
+// Switches to tempo sync, with the looper alone in the output, and waits for the worker thread to
+// allocate the tape. Tests run faster than real time, so without this they would press Rec before
+// the tape exists.
 void useSyncMode (Plug& plug);
 
 // Records a tone on the free running tape for one whole pass, then turns off the overdubbing that

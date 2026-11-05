@@ -156,6 +156,8 @@ Before calling a change done:
 
 ### The tests
 
+`.github/workflows/ci.yml` builds Debug and Release and runs all of this on every push and pull request. Don't weaken or skip it to get a change through.
+
 `tests/` builds one program, `LoopTexturerTests`, which loads the built plug-in and drives it through the VST3 interfaces, the way Cubase does. It doesn't link the plug-in's code, so tests can only see what a host can.
 
 | File | Covers |
@@ -175,7 +177,7 @@ Before calling a change done:
 
 These tests run much faster than real time, which matters when writing new ones:
 
-- Sleep after entering tempo sync, with a valid tempo in `ProcessContext`, so the worker thread can allocate the tape before you press Rec. `useSyncMode` does this.
+- Use `useSyncMode` to enter tempo sync. It waits until the worker thread has allocated the tape, however long that takes on the machine. Pressing Rec before that makes the recording start a bar late, and a fixed wait fails on slower machines.
 - Let the speed settle for about 0.8 s after changing the free running length, before recording. `recordFree` does this.
 - Parameter changes are smoothed over about 20 ms, so allow for that before measuring. Otherwise, an early click can leak through the dry signal.
 - `DoDragDrop` only wakes on mouse input, so a synthetic drag needs mouse messages posted to the thread. `Panel` does this.

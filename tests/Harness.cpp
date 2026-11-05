@@ -397,13 +397,41 @@ void useSyncMode (Plug& plug)
     plug.set (kLooperMode, 1);
 
     // The tape is sized from the tempo, so this needs a valid one. The slowest tempo in the tests
-    // gives a tape that's large enough for all of them.
+    // gives a tape that's large enough for all of them. This also gives the level changes above
+    // time to finish.
     Song song (plug, 60.0);
-    plug.settle (0.01);
-    Sleep (500);
-
-    // Long enough for the level changes above to finish, too.
     plug.settle (0.3);
+
+    // How long the tape takes depends on the build and the machine, and a host can't ask whether
+    // it's there, so this finds out from a short test recording: only a recorded click comes back.
+    song.context.tempo = 480.0;
+    plug.set (kLooperBars, kBarsHalf);
+
+    constexpr int kMaxAttempts = 300;
+    bool isReady = false;
+    Samples in (static_cast<size_t> (kSampleRate * 0.6), 0.0f);
+    in[1000] = 0.9f;
+    Samples out;
+    for (int attempt = 0; attempt < kMaxAttempts && !isReady; ++attempt)
+    {
+        song.locate (0.0);
+        song.play (true);
+        plug.pressButton (Looper::kCommandRec);
+        plug.runMono (in, out);
+        isReady = findClicks (out).size () >= 1;
+
+        song.play (false);
+        plug.pressButton (Looper::kCommandStop);
+        plug.pressButton (Looper::kCommandClear);
+        plug.settle (0.01);
+
+        if (!isReady)
+            Sleep (100);
+    }
+    check ("the tempo sync tape was allocated", isReady);
+
+    plug.set (kLooperBars, kBarsOne);
+    plug.settle (0.05);
     plug.context = nullptr;
 }
 

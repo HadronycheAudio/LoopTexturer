@@ -365,12 +365,10 @@ void testPanel ()
     panel.saveScreenshot ("5-cleared");
 
     // Tempo sync, where one bar at 240 BPM is one second.
+    useSyncMode (plug);
     Song song (plug, 240.0);
     song.locate (0);
     song.play (true);
-    plug.set (kLooperMode, 1);
-    panel.runAudio (0.5, 0.0f);
-    Sleep (500); // Gives the worker thread time to allocate the tape.
     panel.runAudio (0.1, 0.0f);
 
     panel.click (kRecX, kButtonY);
