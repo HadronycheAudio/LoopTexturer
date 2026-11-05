@@ -44,12 +44,15 @@ Copy-Item -Recurse -Force build/VST3/Release/LoopTexturer.vst3 "C:\Program Files
 **Free running** works like an endless tape loop, whether or not Cubase is playing:
 
 - Length sets the tape speed, so changing it repitches the loop.
-- Rec replaces what's on the tape until you press it again. Overdub adds to it in the same way.
+- Rec replaces what's on the tape for one pass, then moves on to overdubbing. Pressing Rec before the pass ends stops recording instead.
+- Stop halts the tape, and Play relaunches it from the start of the loop.
 
 **Tempo sync** follows the Cubase transport:
 
 - Choose a length in bars, or Open to end the recording yourself. The maximum is 64 bars.
 - Rec and Play start at the next bar line. Overdub starts right away.
+- When the recording ends, the looper moves on to overdubbing.
+- Stop silences the loop right away, and Play brings it back at the next bar line, in phase.
 - A tempo change repitches the loop.
 
 In both modes:

@@ -116,13 +116,15 @@ flowchart LR
 - A knob sets the loop length, from 500 ms to 10 s.
 - Changing the length repitches the loop, like changing the tape speed.
 - Rec and overdub aren't tied to any grid.
+- Rec replaces what's on the tape for one whole pass, then moves on to overdubbing. Pressing Rec before the pass ends stops recording instead.
+- Stop halts the tape, and Play relaunches it from the start of the loop.
 
 **Proposed:**
 
 - A fixed 10 s buffer acting as the tape (3.84 MB at 48 kHz). The knob sets the tape speed: 10 s is normal speed and 500 ms is 20x.
 - Audio recorded at any length plays back at the correct pitch while the knob stays there. Moving the knob across its whole range shifts the pitch by up to about 4.3 octaves.
-- No Play or Stop buttons, because the tape never stops. The dry/wet control silences the loop instead.
-- Rec keeps replacing what's on the tape until it's pressed again. Overdub adds to it in the same way.
+- On an empty tape, the loop starts where the recording starts.
+- Stop leaves the tape standing still, so feedback doesn't change it. Pressing Rec or Overdub on a stopped tape starts it again from the top of the loop.
 
 #### Tempo sync mode
 
@@ -132,6 +134,7 @@ flowchart LR
 - Loop lengths in bars, from presets (1/2, 1, 2, 6, 8 bars and so on) or an arbitrary number of bars.
 - Two ways to end recording: a chosen length stops by itself, and an open-ended setting records until Rec is pressed again, closing the loop at the next bar line.
 - Maximum of 64 bars. If recording reaches this length, the loop ends and replay starts.
+- However a recording ends, the looper moves on to overdubbing.
 - Rec and Play start at the next bar line, so the loop stays matched to the grid.
 - A tempo change repitches the loop.
 
@@ -212,6 +215,7 @@ VST3 has no API for this. The plug-in writes a WAV file and starts an operating 
 - All controls on one panel.
 - If possible, the looper draws the waveform of its contents, with a cursor showing the playhead.
 - A basic design is fine for the prototype, as long as it's functional.
+- Dark looper buttons with white text. Rec lights red when active, and Overdub lights yellow.
 
 **Proposed:** the panel follows the signal path from left to right, with the waveform and looper controls in their own strip. Dragging the waveform starts the drag to the timeline.
 

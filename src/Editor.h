@@ -8,6 +8,7 @@
 
 namespace VSTGUI {
 class CControl;
+class CGradient;
 class CTextButton;
 class CTextLabel;
 class CView;
@@ -48,6 +49,7 @@ private:
     void addRowLabel (const VSTGUI::CRect& area, const char* text);
     VSTGUI::CTextButton* addButton (const VSTGUI::CRect& area, int tag, const char* title);
     void addLooperSection (int top);
+    static void setButtonFill (VSTGUI::CTextButton* button, VSTGUI::CGradient* fill);
 
     void syncControls ();
     void syncLooper ();
@@ -69,6 +71,12 @@ private:
     VSTGUI::CTextButton* _confirmButton { nullptr };
     VSTGUI::CTextButton* _cancelButton { nullptr };
     WaveformView* _waveform { nullptr };
+
+    VSTGUI::SharedPointer<VSTGUI::CGradient> _idleFill;
+    VSTGUI::SharedPointer<VSTGUI::CGradient> _pressedFill;
+    VSTGUI::SharedPointer<VSTGUI::CGradient> _recordFill;
+    VSTGUI::SharedPointer<VSTGUI::CGradient> _overdubFill;
+    VSTGUI::SharedPointer<VSTGUI::CGradient> _playFill;
 
     double _pendingMode { 0.0 };
 };

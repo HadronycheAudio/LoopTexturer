@@ -103,6 +103,7 @@ private:
     void adoptIncoming ();
     void handleCommands (const Settings& settings);
     void clearLoop ();
+    void startFreeTape ();
     void updateSyncBlock (const Transport& transport);
 
     void processFree (float inLeft, float inRight, float& left, float& right);
@@ -159,6 +160,8 @@ private:
     // Free running.
     Smoother _speed;
     bool _freeHasContent { false };
+    bool _freePlaying { true };
+    double _recordedCells { 0.0 }; // How far the head has moved in the current Rec pass.
     int64_t _eraseCursor { -1 }; // Negative when the tape isn't being erased.
 
     // Tempo sync.

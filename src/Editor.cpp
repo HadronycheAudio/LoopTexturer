@@ -67,6 +67,12 @@ const CColor kDimTextColor (160, 166, 175);
 const CColor kFaintTextColor (95, 100, 108);
 const CColor kWaveColor (120, 160, 205);
 const CColor kHeldColor (58, 72, 92);
+const CColor kButtonColor (20, 22, 26);
+const CColor kButtonPressedColor (58, 62, 70);
+const CColor kButtonTextColor (255, 255, 255);
+const CColor kRecordColor (196, 36, 36);
+const CColor kOverdubColor (186, 146, 8);
+const CColor kPlayColor (34, 128, 70);
 
 // A titled background box. Controls are added on top of it.
 class SectionView : public CView
@@ -139,7 +145,9 @@ std::string describeStatus (const LooperBridge::Status& status)
         return "Recording";
     if (status.isOverdubbing.load ())
         return "Overdubbing";
-    return status.hasContent.load () ? "Looping: drag to the timeline" : "Empty: press Rec";
+    if (!status.hasContent.load ())
+        return "Empty: press Rec";
+    return status.isPlaying.load () ? "Looping: drag to the timeline" : "Stopped: press Play";
 }
 
 } // namespace
@@ -427,13 +435,33 @@ CTextButton* Editor::addButton (const CRect& area, int tag, const char* title)
     button->setFont (kNormalFontSmall);
     button->setRoundRadius (3.0);
     button->setFrameColor (kFrameColor);
-    button->setTextColor (kTextColor);
+    button->setFrameColorHighlighted (kFrameColor);
+    button->setTextColor (kButtonTextColor);
+    button->setTextColorHighlighted (kButtonTextColor);
+    button->setGradient (_idleFill);
+    button->setGradientHighlighted (_pressedFill);
     frame->addView (button);
     return button;
 }
 
+void Editor::setButtonFill (CTextButton* button, CGradient* fill)
+{
+    if (button->getGradient () != fill)
+    {
+        button->setGradient (fill);
+        button->invalid ();
+    }
+}
+
 void Editor::addLooperSection (int top)
 {
+    const auto solidFill = [] (const CColor& color) { return owned (CGradient::create (0.0, 1.0, color, color)); };
+    _idleFill = solidFill (kButtonColor);
+    _pressedFill = solidFill (kButtonPressedColor);
+    _recordFill = solidFill (kRecordColor);
+    _overdubFill = solidFill (kOverdubColor);
+    _playFill = solidFill (kPlayColor);
+
     const CRect section (kMargin, top, kEditorWidth - kMargin, top + kLooperHeight);
     addSection (section, "Looper");
 
@@ -625,17 +653,14 @@ void Editor::syncLooper ()
         view->setVisible (showsCustomBars);
     _barsMenu->setVisible (isSync);
 
-    // The tape never stops in free running mode, so these don't apply.
-    _playButton->setVisible (isSync);
-    _stopButton->setVisible (isSync);
-
     if (const auto bridge = _controller->getLooperBridge ())
     {
         const auto& status = bridge->status;
         const bool isRecording = status.isRecording.load () || status.isArmed.load () || status.isClosing.load ();
-        _recButton->setTextColor (isRecording ? kAccentColor : kTextColor);
-        _overdubButton->setTextColor (status.isOverdubbing.load () ? kAccentColor : kTextColor);
-        _playButton->setTextColor (status.isPlaying.load () || status.isPlayArmed.load () ? kAccentColor : kTextColor);
+        const bool isPlaying = status.hasContent.load () && (status.isPlaying.load () || status.isPlayArmed.load ());
+        setButtonFill (_recButton, isRecording ? _recordFill : _idleFill);
+        setButtonFill (_overdubButton, status.isOverdubbing.load () ? _overdubFill : _idleFill);
+        setButtonFill (_playButton, isPlaying ? _playFill : _idleFill);
     }
 
     _waveform->invalid ();

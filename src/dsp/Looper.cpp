@@ -86,6 +86,7 @@ void Looper::adoptIncoming ()
         _isPlayArmed = false;
         _eraseCursor = -1;
         _overviewBucket = -1;
+        _freePlaying = true;
 
         if (load->mode == Mode::Free)
         {
@@ -151,6 +152,7 @@ void Looper::clearLoop ()
     _overviewBucket = -1;
 
     _freeHasContent = false;
+    _freePlaying = true;
     _eraseCursor = 0;
 
     _syncState = SyncState::Empty;
@@ -168,6 +170,17 @@ void Looper::clearLoop ()
         tape->clearOverview ();
 }
 
+void Looper::startFreeTape ()
+{
+    // A stopped tape starts again from the top of the loop.
+    if (!_freePlaying)
+    {
+        _freePlaying = true;
+        _head = 0.0;
+        _wetEnvelope = 0.0f;
+    }
+}
+
 void Looper::handleCommands (const Settings& settings)
 {
     const int commands = _pendingCommands.exchange (0);
@@ -182,21 +195,40 @@ void Looper::handleCommands (const Settings& settings)
 
     if (_mode == Mode::Free)
     {
-        // The tape never stops, so Play and Stop have nothing to do here.
         if (_eraseCursor >= 0)
             return;
+
+        if (commands & kCommandStop)
+        {
+            _freePlaying = false;
+            _isRecording = false;
+            _isOverdubbing = false;
+        }
+        if (commands & kCommandPlay)
+            startFreeTape ();
 
         if (commands & kCommandRec)
         {
             _isRecording = !_isRecording;
             if (_isRecording)
+            {
+                startFreeTape ();
                 _isOverdubbing = false;
+                _recordedCells = 0.0;
+
+                // On an empty tape, the loop starts where the recording starts.
+                if (!_freeHasContent)
+                    _head = 0.0;
+            }
         }
         if (commands & kCommandOverdub)
         {
             _isOverdubbing = !_isOverdubbing;
             if (_isOverdubbing)
+            {
+                startFreeTape ();
                 _isRecording = false;
+            }
         }
         return;
     }
@@ -423,6 +455,19 @@ void Looper::processFree (float inLeft, float inRight, float& left, float& right
 
     const int64_t frames = tape->getCapacity ();
     const double speed = _speed.nextPrecise ();
+
+    if (!_freePlaying)
+    {
+        // The tape stands still, with the output fading out.
+        _wetTarget = 0.0f;
+        updateEnvelopes ();
+        left = _lastOutputLeft * _wetEnvelope;
+        right = _lastOutputRight * _wetEnvelope;
+        _previousLeft = inLeft;
+        _previousRight = inRight;
+        return;
+    }
+
     const double previous = _head;
     double unwrapped = previous + speed;
     _head = unwrapped >= static_cast<double> (frames) ? unwrapped - static_cast<double> (frames) : unwrapped;
@@ -431,8 +476,10 @@ void Looper::processFree (float inLeft, float inRight, float& left, float& right
     updateEnvelopes ();
 
     const double width = std::max (0.0, speed - _writeSpeed);
-    left = tape->read (0, _head, frames, width) * _wetEnvelope;
-    right = tape->read (1, _head, frames, width) * _wetEnvelope;
+    _lastOutputLeft = tape->read (0, _head, frames, width);
+    _lastOutputRight = tape->read (1, _head, frames, width);
+    left = _lastOutputLeft * _wetEnvelope;
+    right = _lastOutputRight * _wetEnvelope;
 
     if (_eraseCursor < 0)
     {
@@ -443,6 +490,17 @@ void Looper::processFree (float inLeft, float inRight, float& left, float& right
         }
         if (_freeHasContent)
             writeSpan (*tape, previous, unwrapped, frames, false, inLeft, inRight);
+
+        // After one whole pass, Rec moves on to overdubbing on top of what it just recorded.
+        if (_isRecording)
+        {
+            _recordedCells += speed;
+            if (_recordedCells >= static_cast<double> (frames))
+            {
+                _isRecording = false;
+                _isOverdubbing = true;
+            }
+        }
     }
 
     _previousLeft = inLeft;
@@ -485,8 +543,10 @@ void Looper::closeRecording (double quarters)
     _isClosing = false;
     _isPlaying = true;
 
-    // Recording fades out over the start of the loop, which crossfades the seam.
+    // Recording fades out over the start of the loop, which crossfades the seam, and moves on to
+    // overdubbing on top of what it just recorded.
     _isRecording = false;
+    _isOverdubbing = true;
     _head -= static_cast<double> (_loopFrames);
 }
 
@@ -632,7 +692,7 @@ void Looper::endBlock ()
     status.isArmed.store (_isArmed);
     status.isClosing.store (_isClosing);
     status.isPlayArmed.store (_isPlayArmed);
-    status.isPlaying.store (isSync ? _isPlaying : true);
+    status.isPlaying.store (isSync ? _isPlaying : _freePlaying);
     status.isTransportRunning.store (_transportRunning);
     status.transportJumped.store (_transportJumped);
     status.activeTape.store (tape);
