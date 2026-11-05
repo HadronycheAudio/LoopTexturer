@@ -52,6 +52,7 @@ public:
 
     // Set by the audio thread when it needs a larger tape. The processor's worker thread allocates it.
     std::atomic<int64_t> requestedSyncFrames { 0 };
+    std::atomic<int64_t> requestedFreeFrames { 0 };
 
     // Keeps a tape alive. The audio thread only ever holds plain pointers to tapes kept here.
     void addTape (const std::shared_ptr<Tape>& tape);

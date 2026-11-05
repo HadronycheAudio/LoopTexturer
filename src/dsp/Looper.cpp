@@ -15,6 +15,8 @@ constexpr double kSlowestPlannedTempo = 20.0;
 constexpr double kTapeHeadroom = 1.25;
 constexpr int64_t kEraseFramesPerBlock = 1 << 16;
 constexpr double kJumpToleranceSamples = 64.0;
+constexpr double kDcCornerHz = 5.0; // At normal speed. The filter runs per cell, so its corner rises with the speed.
+constexpr double kDcReferenceSeconds = 10.0; // The free running tape length that uses kDcCornerHz as it is.
 
 // Unchanged up to full scale, then bends towards a ceiling of 1.5. Above 100% feedback, this curve
 // is what gives the loop its distortion, and it keeps the level from running away.
@@ -48,10 +50,6 @@ void Looper::prepare (double sampleRate)
     _speed.prepare (sampleRate, kSpeedSmoothingMs);
     _feedback.snapTo (_currentFeedback);
 
-    // The corner frequency is 5 Hz at normal speed. Above 100% feedback, this stops any offset from
-    // building up in the loop.
-    _dcCoefficient = static_cast<float> (std::exp (-6.283185307179586 * 5.0 / sampleRate));
-
     const auto freeFrames = static_cast<int64_t> (kFreeTapeSeconds * sampleRate);
     auto* freeTape = _freeTape.load ();
     if (!freeTape || (!_freeHasContent && freeTape->getCapacity () != freeFrames))
@@ -66,10 +64,36 @@ void Looper::prepare (double sampleRate)
     _hasPosition = false;
 }
 
-std::array<const Tape*, 4> Looper::getTapesInUse () const
+std::array<const Tape*, 5> Looper::getTapesInUse () const
 {
+    // Offers have to be read first. adoptIncoming puts a tape in its place before withdrawing its
+    // offer, so in this order, a tape moving between the two is always seen in at least one of them.
+    const Tape* offeredFree = _offeredFreeTape.load ();
+    const Tape* offeredSync = _offeredSyncTape.load ();
     const auto* load = _incomingLoad.load ();
-    return { _freeTape.load (), _syncTape.load (), _offeredSyncTape.load (), load ? load->tape : nullptr };
+    return { offeredFree, offeredSync, _freeTape.load (), _syncTape.load (), load ? load->tape : nullptr };
+}
+
+// A loop restored from an older project or another sample rate keeps its own tape, so that it plays
+// the same. Once it's cleared, the next recording needs a full tape: on a short one, a long loop
+// would run the head slower than normal speed and skip samples of its input.
+bool Looper::isWaitingForFreeTape () const
+{
+    const auto* tape = _freeTape.load ();
+    return tape && !_freeHasContent && tape->getCapacity () != static_cast<int64_t> (kFreeTapeSeconds * _sampleRate);
+}
+
+// Above 100% feedback, this filter stops any offset from building up in the loop. In free running
+// mode, its corner keeps the same place in the audio whatever the tape's size.
+void Looper::updateDcCoefficient ()
+{
+    double cornerHz = kDcCornerHz;
+    if (_mode == Mode::Free)
+    {
+        if (const auto* tape = _freeTape.load ())
+            cornerHz *= kDcReferenceSeconds * _sampleRate / static_cast<double> (tape->getCapacity ());
+    }
+    _dcCoefficient = static_cast<float> (std::exp (-6.283185307179586 * cornerHz / _sampleRate));
 }
 
 void Looper::adoptIncoming ()
@@ -131,14 +155,28 @@ void Looper::adoptIncoming ()
         }
     }
 
+    if (!_freeHasContent)
+    {
+        if (auto* offered = _offeredFreeTape.load ())
+        {
+            _freeTape.store (offered);
+            _offeredFreeTape.store (nullptr);
+            _head = 0.0;
+            _eraseCursor = -1; // A new tape is already blank.
+            _overviewBucket = -1;
+            _freeTapeWasSwapped = true;
+        }
+    }
+
     // A larger tape is only swapped in when no loop is using the current one.
     if (_syncState == SyncState::Empty)
     {
-        if (auto* offered = _offeredSyncTape.exchange (nullptr))
+        if (auto* offered = _offeredSyncTape.load ())
         {
             auto* current = _syncTape.load ();
             if (!current || offered->getCapacity () > current->getCapacity ())
                 _syncTape.store (offered);
+            _offeredSyncTape.store (nullptr);
         }
     }
 }
@@ -195,7 +233,7 @@ void Looper::handleCommands (const Settings& settings)
 
     if (_mode == Mode::Free)
     {
-        if (_eraseCursor >= 0)
+        if (_eraseCursor >= 0 || isWaitingForFreeTape ())
             return;
 
         if (commands & kCommandStop)
@@ -331,13 +369,25 @@ void Looper::beginBlock (const Settings& settings, const Transport& transport)
     handleCommands (settings);
 
     _feedback.setTarget (static_cast<float> (settings.feedback));
+    updateDcCoefficient ();
 
     if (_mode == Mode::Free)
     {
+        if (isWaitingForFreeTape () && !_offeredFreeTape.load ())
+            _bridge.requestedFreeFrames.store (static_cast<int64_t> (kFreeTapeSeconds * _sampleRate));
+
         if (auto* tape = _freeTape.load ())
         {
             const double frames = static_cast<double> (tape->getCapacity ());
-            _speed.setTarget (frames / (settings.freeLengthSeconds * _sampleRate));
+            const double speed = frames / (settings.freeLengthSeconds * _sampleRate);
+            _speed.setTarget (speed);
+
+            // A blank tape has nothing to repitch, and a recording that started during a glide
+            // would begin below normal speed.
+            if (_freeTapeWasSwapped)
+                _speed.snapTo (speed);
+            _freeTapeWasSwapped = false;
+
             if (_eraseCursor >= 0)
                 eraseSomeOfFreeTape ();
         }

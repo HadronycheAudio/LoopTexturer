@@ -10,6 +10,8 @@ void testParameterRanges ();
 void testParameterLabels ();
 void testSavedFormat ();
 void testOlderProject ();
+void testOlderLength ();
+void testOlderTapeReplaced ();
 
 // The effects chain.
 void testLatency ();
@@ -33,6 +35,7 @@ void testOverdub ();
 void testFeedbackUnity ();
 void testFeedbackBelowUnity ();
 void testFeedbackAboveUnity ();
+void testFeedbackKeepsLowEnd ();
 void testDryWet ();
 void testClear ();
 void testRecMovesToOverdub ();

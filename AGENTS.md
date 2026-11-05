@@ -57,6 +57,7 @@ People use this plug-in in real projects. Breaking these rules damages saved pro
 - **Changing the saved format requires bumping `kStateVersion` and still reading every older version.** The format is:
     1. `int32` version, `int32` count, then `int32` ID and `double` normalized value pairs (`writeParamState`).
     2. From version 2, the loop (`Processor::writeLoopState`): `int32` has-loop flag, and if set, `int32` mode, `int64` frames, 4 `double`s (quarters, anchor, frames per quarter, write speed), then all left samples and all right samples as `float`.
+    3. Version 3 has the same layout. It extended the looper's length from 10 s to 30 s, so `readParamState` converts that parameter's value when reading older versions. Automation saved by hosts can't be converted.
 - **Loading must tolerate missing or damaged data.** An older state has no loop section, which reads as having no loop.
 
 ### The audio thread
@@ -116,7 +117,7 @@ Understanding this is necessary before changing the looper:
 | Audio | `Processor::process`, the `Looper` engine | Atomics only |
 | UI | `Editor`, `WaveformView`, `exportLoop` | Reads `LooperBridge`, sends VST3 messages |
 | Host | `setState`, `getState`, `setActive` | Atomics, and handing over a `LoadedLoop` |
-| Worker (`Processor::runWorker`) | Allocates and frees tapes | `requestedSyncFrames`, `offerSyncTape`, `_tapeChangeMutex` |
+| Worker (`Processor::runWorker`) | Allocates and frees tapes | `requestedSyncFrames`, `requestedFreeFrames`, `offerSyncTape`, `offerFreeTape`, `_tapeChangeMutex` |
 
 How the pieces connect:
 
@@ -131,7 +132,7 @@ How the pieces connect:
 
 `src/dsp/Looper.cpp` is a tape with one head. The modes only differ in what moves it:
 
-- **Free running:** a 10 s tape, where the length knob sets the head's speed. Changing the speed repitches the loop. Stop leaves the tape standing still.
+- **Free running:** a 30 s tape, where the length knob sets the head's speed. Changing the speed repitches the loop. Stop leaves the tape standing still. A restored loop keeps the tape size it was saved with, so `_freeTape`'s capacity can differ until that loop is cleared, when the worker provides a full tape.
 - **Tempo sync:** a tape sized for 64 bars at the current tempo plus 25%, allocated by the worker when you enter this mode. `_syncState` goes from `Empty` to `Recording` to `Loop`.
 
 `writeSpan` fills every cell the head passed, ramping between input samples, so audio recorded at any speed plays back cleanly at that speed. `Tape::read` averages cells when playing faster than the audio was recorded, to limit aliasing. Punching in and out uses short envelopes to avoid clicks, and at the end of a recording these also crossfade the loop's seam.
@@ -207,3 +208,4 @@ Rules for releases:
 - Modes with sharp corners still alias at extreme settings: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB.
 - The installer isn't code-signed, so Windows warns users when they run it.
 - Starting a drag on a very long loop with the post saturator on can freeze the panel for a few seconds, because the export runs on the UI thread.
+- Length automation written before version 3 plays back at different lengths, because hosts store it normalized and the range has since changed.

@@ -113,7 +113,7 @@ flowchart LR
 **Requirement:**
 
 - Behaves like a looped magnetic tape recorder running endlessly, whether or not the Cubase transport is running.
-- A knob sets the loop length, from 500 ms to 10 s.
+- A knob sets the loop length, from 500 ms to 30 s.
 - Changing the length repitches the loop, like changing the tape speed.
 - Rec and overdub aren't tied to any grid.
 - Rec replaces what's on the tape for one whole pass, then moves on to overdubbing. Pressing Rec before the pass ends stops recording instead.
@@ -121,8 +121,9 @@ flowchart LR
 
 **Proposed:**
 
-- A fixed 10 s buffer acting as the tape (3.84 MB at 48 kHz). The knob sets the tape speed: 10 s is normal speed and 500 ms is 20x.
-- Audio recorded at any length plays back at the correct pitch while the knob stays there. Moving the knob across its whole range shifts the pitch by up to about 4.3 octaves.
+- A fixed 30 s buffer acting as the tape (11.52 MB at 48 kHz, which is also what a saved loop adds to a project). The knob sets the tape speed: 30 s is normal speed and 500 ms is 60x.
+- A loop saved by version 1.0.0 keeps its 10 s tape and its pitch. The next recording after clearing it gets a 30 s tape.
+- Audio recorded at any length plays back at the correct pitch while the knob stays there. Moving the knob across its whole range shifts the pitch by up to about 5.9 octaves.
 - On an empty tape, the loop starts where the recording starts.
 - Stop leaves the tape standing still, so feedback doesn't change it. Pressing Rec or Overdub on a stopped tape starts it again from the top of the loop.
 

@@ -11,8 +11,10 @@ namespace LoopTexturer {
 
 namespace {
 
-// Version 2 adds the looper's audio after the parameters.
-constexpr int32 kStateVersion = 2;
+// Version 2 adds the looper's audio after the parameters. Version 3 extends the looper's length from
+// 10 s to 30 s, which changes what its normalized value means.
+constexpr int32 kStateVersion = 3;
+constexpr double kVersion2MaxLength = 10.0;
 
 // The order of these lists must match the enums in src/dsp.
 const char* const kLfoWaves[] = { "Sine", "Triangle", "Square", "Sample & hold" };
@@ -56,7 +58,7 @@ const std::array<ParamSpec, kParamCount> kSpecs { {
     { "Volume", "dB", kVolumeSilenceDb, 6.0, 0.0, Curve::Linear, 1, nullptr, 0 },
 
     { "Looper mode", "", 0.0, kLooperModeCount - 1, 0.0, Curve::List, 0, kLooperModes, kLooperModeCount },
-    { "Looper length", "s", 0.5, 10.0, 2.0, Curve::Log, 2, nullptr, 0 },
+    { "Looper length", "s", 0.5, 30.0, 2.0, Curve::Log, 2, nullptr, 0 },
     { "Looper bars", "", 0.0, kLooperBarChoiceCount - 1, 1.0, Curve::List, 0, kLooperBarChoices, kLooperBarChoiceCount },
     { "Looper custom bars", "bars", 1.0, 64.0, 16.0, Curve::Integer, 0, nullptr, 0 },
     { "Looper feedback", "%", 0.0, 200.0, 100.0, Curve::Linear, 0, nullptr, 0 },
@@ -128,8 +130,16 @@ bool readParamState (IBStream* stream, const std::function<void (Vst::ParamID, d
         if (!streamer.readInt32 (id) || !streamer.readDouble (value))
             return false;
 
-        if (id >= 0 && id < kParamCount && std::isfinite (value))
-            onValue (static_cast<Vst::ParamID> (id), std::clamp (value, 0.0, 1.0));
+        if (id < 0 || id >= kParamCount || !std::isfinite (value))
+            continue;
+
+        value = std::clamp (value, 0.0, 1.0);
+        if (version < 3 && id == kLooperFreeLength)
+        {
+            const auto& spec = getParamSpec (kLooperFreeLength);
+            value = plainToNormalized (spec, spec.min * std::pow (kVersion2MaxLength / spec.min, value));
+        }
+        onValue (static_cast<Vst::ParamID> (id), value);
     }
 
     if (versionOut)

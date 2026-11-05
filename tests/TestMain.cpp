@@ -26,6 +26,8 @@ const Test kTests[] = {
     { L"parameter-labels", testParameterLabels },
     { L"saved-format", testSavedFormat },
     { L"older-project", testOlderProject },
+    { L"older-length", testOlderLength },
+    { L"older-tape-replaced", testOlderTapeReplaced },
 
     { L"latency", testLatency },
     { L"gain-volume", testGainAndVolume },
@@ -46,6 +48,7 @@ const Test kTests[] = {
     { L"feedback-unity", testFeedbackUnity },
     { L"feedback-below-unity", testFeedbackBelowUnity },
     { L"feedback-above-unity", testFeedbackAboveUnity },
+    { L"feedback-keeps-low-end", testFeedbackKeepsLowEnd },
     { L"dry-wet", testDryWet },
     { L"clear", testClear },
     { L"rec-moves-to-overdub", testRecMovesToOverdub },

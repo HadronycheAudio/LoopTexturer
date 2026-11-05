@@ -70,7 +70,7 @@ public:
     };
 
     static constexpr int64_t kMaxBars = 64;
-    static constexpr double kFreeTapeSeconds = 10.0;
+    static constexpr double kFreeTapeSeconds = 30.0;
 
     // inputLatency is how many samples behind the host's position the input arrives at the looper.
     Looper (LooperBridge& bridge, int inputLatency);
@@ -80,11 +80,15 @@ public:
 
     // Any thread.
     void sendCommand (int command) { _pendingCommands.fetch_or (command); }
+    // An offer must not replace one that's still there, because the audio thread may be taking it.
+    bool canOfferSyncTape () const { return _offeredSyncTape.load () == nullptr; }
+    bool canOfferFreeTape () const { return _offeredFreeTape.load () == nullptr; }
     void offerSyncTape (Tape* tape) { _offeredSyncTape.store (tape); }
+    void offerFreeTape (Tape* tape) { _offeredFreeTape.store (tape); }
     void loadLoop (const LoadedLoop* loop) { _incomingLoad.store (loop); }
 
     // The tapes that must stay allocated.
-    std::array<const Tape*, 4> getTapesInUse () const;
+    std::array<const Tape*, 5> getTapesInUse () const;
     bool hasPendingLoad () const { return _incomingLoad.load () != nullptr; }
 
     // Audio thread.
@@ -104,6 +108,8 @@ private:
     void handleCommands (const Settings& settings);
     void clearLoop ();
     void startFreeTape ();
+    bool isWaitingForFreeTape () const;
+    void updateDcCoefficient ();
     void updateSyncBlock (const Transport& transport);
 
     void processFree (float inLeft, float inRight, float& left, float& right);
@@ -126,6 +132,7 @@ private:
 
     std::atomic<int> _pendingCommands { 0 };
     std::atomic<Tape*> _offeredSyncTape { nullptr };
+    std::atomic<Tape*> _offeredFreeTape { nullptr };
     std::atomic<const LoadedLoop*> _incomingLoad { nullptr };
 
     // Plain pointers, kept alive by the bridge. Atomic only so the worker thread can see which are in use.
@@ -161,6 +168,7 @@ private:
     Smoother _speed;
     bool _freeHasContent { false };
     bool _freePlaying { true };
+    bool _freeTapeWasSwapped { false };
     double _recordedCells { 0.0 }; // How far the head has moved in the current Rec pass.
     int64_t _eraseCursor { -1 }; // Negative when the tape isn't being erased.
 

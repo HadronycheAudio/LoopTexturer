@@ -82,7 +82,7 @@ void testFreeExactTiming ()
 
 void testFreeLengthRepitches ()
 {
-    const std::pair<double, double> cases[] = { { 4.0, 500.0 }, { 1.0, 2000.0 }, { 0.5, 4000.0 }, { 2.0, 1000.0 }, { 10.0, 200.0 } };
+    const std::pair<double, double> cases[] = { { 4.0, 500.0 }, { 1.0, 2000.0 }, { 0.5, 4000.0 }, { 2.0, 1000.0 }, { 10.0, 200.0 }, { 30.0, 66.667 } };
     for (const auto& [length, expected] : cases)
     {
         Plug plug;
@@ -101,7 +101,7 @@ void testFreeLengthRepitches ()
 
 void testFreeEachLength ()
 {
-    for (double length : { 0.5, 1.0, 3.3, 10.0 })
+    for (double length : { 0.5, 1.0, 3.3, 10.0, 30.0 })
     {
         Plug plug;
         plug.looperOnly ();
@@ -212,6 +212,27 @@ void testFeedbackAboveUnity ()
     check ("pinned below the limiter's ceiling", highest < 1.55);
     check ("the level grows and the loop distorts", rms (out) > firstLevel * 3.0 && distortion > 0.01);
     check ("no DC build-up", std::abs (offset) < 0.01);
+}
+
+void testFeedbackKeepsLowEnd ()
+{
+    // Above 100%, a filter stops offsets from building up. It runs per cell of tape, so a larger tape
+    // would raise its corner and thin out the loop if it weren't adjusted. With the corner at 25 Hz
+    // for this length, a quiet 40 Hz tone at 150% grows by about 2 dB per pass. At 75 Hz, it would fade.
+    Plug plug;
+    plug.looperOnly ();
+    recordFree (plug, 40, 0.02, 2.0);
+    plug.set (kLooperFeedback, 150);
+    plug.settle (0.05);
+
+    Samples out;
+    plug.runMono (silence (2.0), out);
+    const double first = rms (out);
+    for (int pass = 0; pass < 4; ++pass)
+        plug.runMono (silence (2.0), out);
+    const double perPass = db (rms (out) / first) / 4.0;
+    std::printf ("  change per pass at 150%%: %.2f dB\n", perPass);
+    check ("low frequencies keep their place above 100% feedback", std::abs (perPass - 2.1) < 0.5);
 }
 
 void testDryWet ()

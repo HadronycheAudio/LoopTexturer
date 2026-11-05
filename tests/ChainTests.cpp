@@ -434,6 +434,20 @@ void measureCpu ()
         const double took = std::chrono::duration<double> (std::chrono::steady_clock::now () - start).count ();
         std::printf ("Post saturator %s: %.2f%% of one core\n", post ? "on" : "off", 100.0 * took / seconds);
     }
+
+    // The looper's worst case: the head passes the most cells per sample at the shortest length, and
+    // overdubbing with feedback writes all of them.
+    Plug plug;
+    plug.looperOnly ();
+    recordFree (plug, 440, 0.3, 0.5);
+    plug.set (kLooperFeedback, 90);
+    plug.pressButton (Looper::kCommandOverdub);
+    plug.settle (0.05);
+
+    const auto start = std::chrono::steady_clock::now ();
+    plug.runMono (in, out);
+    const double took = std::chrono::duration<double> (std::chrono::steady_clock::now () - start).count ();
+    std::printf ("Overdubbing the shortest loop: %.2f%% of one core\n", 100.0 * took / seconds);
 }
 
 } // namespace Tests

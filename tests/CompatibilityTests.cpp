@@ -10,6 +10,8 @@
 #include "pluginterfaces/base/ustring.h"
 #include "public.sdk/source/common/memorystream.h"
 
+#include <windows.h>
+
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -134,7 +136,7 @@ void testParameterRanges ()
         { kPostSatMix, "Post saturator mix", 0.0, 50.0, 100.0 },
         { kVolume, "Volume", -60.0, -27.0, 6.0 },
         { kLooperMode, "Looper mode", 0.0, 1.0, 1.0 },
-        { kLooperFreeLength, "Looper length", 0.5, 2.236068, 10.0 },
+        { kLooperFreeLength, "Looper length", 0.5, 3.872983, 30.0 },
         { kLooperBars, "Looper bars", 0.0, 4.0, 7.0 },
         { kLooperCustomBars, "Looper custom bars", 1.0, 33.0, 64.0 },
         { kLooperFeedback, "Looper feedback", 0.0, 100.0, 200.0 },
@@ -231,7 +233,7 @@ void testSavedFormat ()
 
     // Reading a parameter back also shows the loop didn't overwrite it.
     const auto written = plug.getStateBytes ();
-    check ("it saves as the current version", readAt<int32_t> (written, 0) == 2);
+    check ("it saves as the current version", readAt<int32_t> (written, 0) == 3);
     check ("every parameter is saved", readAt<int32_t> (written, 4) == kParamCount);
 
     bool idsInOrder = true;
@@ -272,6 +274,121 @@ void testOlderProject ()
     check ("its values are kept", std::abs (readAt<double> (written, 8 + 4) - 0.75) < 1e-9);
     check ("it has no loop", written.size () == kNoLoopStateBytes);
     check ("a looper parameter it never had stays at its default", std::abs (plug.controller->getParamNormalized (kLooperFeedback) - 0.5) < 1e-9);
+}
+
+namespace {
+
+// A free running loop as version 1.0.0 saved it, whose length went up to 10 s: a sine on a whole 10 s tape.
+std::vector<char> makeTenSecondTapeState (double savedLength)
+{
+    constexpr int64_t frames = 480000;
+    const auto audio = sine (1000, 0.25, 10.0);
+
+    std::vector<char> saved;
+    append<int32_t> (saved, 2); // Version
+    append<int32_t> (saved, 1); // Parameter count
+    append<int32_t> (saved, kLooperFreeLength);
+    append<double> (saved, savedLength);
+    append<int32_t> (saved, 1); // Has a loop
+    append<int32_t> (saved, 0); // Free running
+    append<int64_t> (saved, frames);
+    append<double> (saved, 0.0); // Quarters
+    append<double> (saved, 0.0); // Anchor
+    append<double> (saved, 0.0); // Frames per quarter
+    append<double> (saved, 1.0); // Write speed
+    appendBytes (saved, audio.data (), audio.size () * sizeof (float));
+    appendBytes (saved, audio.data (), audio.size () * sizeof (float));
+    return saved;
+}
+
+} // namespace
+
+void testOlderLength ()
+{
+    // Each saved value, what the knob meant when it was saved, and how fast that plays the tape.
+    const double cases[][2] = { { 1.0, 10.0 }, { 0.5, 2.236068 }, { 0.0, 0.5 } };
+    for (const auto& [savedLength, seconds] : cases)
+    {
+        auto saved = makeTenSecondTapeState (savedLength);
+        MemoryStream processorStream (saved.data (), static_cast<TSize> (saved.size ()));
+        MemoryStream controllerStream (saved.data (), static_cast<TSize> (saved.size ()));
+        Plug plug;
+        check ("it loads", plug.component->setState (&processorStream) == kResultOk);
+        check ("the controller loads it too", plug.controller->setComponentState (&controllerStream) == kResultOk);
+
+        const double shown = plug.controller->normalizedParamToPlain (kLooperFreeLength, plug.controller->getParamNormalized (kLooperFreeLength));
+        const auto written = plug.getStateBytes ();
+        const double used = plug.controller->normalizedParamToPlain (kLooperFreeLength, readAt<double> (written, 8 + kLooperFreeLength * 12 + 4));
+        std::printf ("  saved at %.2f: the panel shows %.3f s, the audio side has %.3f s\n", savedLength, shown, used);
+        check ("the panel shows the same length as before", std::abs (shown - seconds) < 1e-3);
+        check ("the audio side has the same length as before", std::abs (used - seconds) < 1e-3);
+
+        plug.looperOnly ();
+        Samples out;
+        plug.runMono (silence (1.5), out);
+        const auto tail = slice (out, 24000, 48000);
+        const double frequency = measureFrequency (tail);
+        const double expected = 1000.0 * 10.0 / seconds;
+        std::printf ("  plays at %.1f Hz, expected %.1f Hz\n", frequency, expected);
+        check ("the loop keeps the pitch it had", std::abs (frequency - expected) < expected * 0.01);
+    }
+
+    // From version 3, the value is already in the new range.
+    std::vector<char> current;
+    append<int32_t> (current, 3);
+    append<int32_t> (current, 1);
+    append<int32_t> (current, kLooperFreeLength);
+    append<double> (current, 0.5);
+    append<int32_t> (current, 0); // No loop
+    MemoryStream stream (current.data (), static_cast<TSize> (current.size ()));
+    Plug plug;
+    check ("a current state loads", plug.controller->setComponentState (&stream) == kResultOk);
+    const double shown = plug.controller->normalizedParamToPlain (kLooperFreeLength, plug.controller->getParamNormalized (kLooperFreeLength));
+    check ("a current state isn't converted", std::abs (shown - 3.872983) < 1e-3);
+}
+
+void testOlderTapeReplaced ()
+{
+    auto saved = makeTenSecondTapeState (1.0);
+    MemoryStream stream (saved.data (), static_cast<TSize> (saved.size ()));
+    Plug plug;
+    check ("it loads", plug.component->setState (&stream) == kResultOk);
+    plug.looperOnly ();
+    plug.settle (0.1);
+    plug.pressButton (Looper::kCommandClear);
+    plug.set (kLooperFreeLength, 30.0);
+
+    // The buttons do nothing until the worker thread has provided the new tape, however long that
+    // takes on this machine, so this keeps pressing Rec until recording starts.
+    constexpr double kSeconds = 30.0;
+    constexpr double kHz = 5000.0;
+    const auto in = sine (kHz, 0.25, kSeconds);
+    bool isRecording = false;
+    Samples out;
+    for (int attempt = 0; attempt < 300 && !isRecording; ++attempt)
+    {
+        Sleep (20);
+        plug.settle (0.8);
+        plug.pressButton (Looper::kCommandRec);
+        plug.runMono (slice (in, 0, 4800), out);
+        isRecording = plug.getStateBytes ().size () != kNoLoopStateBytes;
+    }
+    check ("recording starts after clearing", isRecording);
+
+    plug.runMono (slice (in, 4800, in.size () - 4800), out);
+    plug.pressButton (Looper::kCommandRec);
+    plug.settle (0.05);
+
+    const auto written = plug.getStateBytes ();
+    const auto frames = readAt<int64_t> (written, kParamStateBytes + 8);
+    std::printf ("  the new loop's tape has %lld frames\n", static_cast<long long> (frames));
+    check ("the new recording gets a whole 30 s tape", frames == 1440000);
+
+    plug.runMono (silence (1.0), out);
+    const double frequency = measureFrequency (out);
+    const double level = rms (out) * std::sqrt (2.0);
+    std::printf ("  plays at %.1f Hz, level %.3f\n", frequency, level);
+    check ("a high tone is recorded cleanly", std::abs (frequency - kHz) < 5.0 && std::abs (level - 0.25) < 0.01);
 }
 
 } // namespace Tests

@@ -166,11 +166,19 @@ void Processor::runWorker ()
         const std::lock_guard<std::mutex> tapeLock (_tapeChangeMutex);
 
         const int64_t requested = _bridge->requestedSyncFrames.exchange (0);
-        if (requested > 0)
+        if (requested > 0 && _looper.canOfferSyncTape ())
         {
             auto tape = std::make_shared<Tape> (requested);
             _bridge->addTape (tape);
             _looper.offerSyncTape (tape.get ());
+        }
+
+        const int64_t requestedFree = _bridge->requestedFreeFrames.exchange (0);
+        if (requestedFree > 0 && _looper.canOfferFreeTape ())
+        {
+            auto tape = std::make_shared<Tape> (requestedFree);
+            _bridge->addTape (tape);
+            _looper.offerFreeTape (tape.get ());
         }
 
         if (!_looper.hasPendingLoad ())
