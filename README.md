@@ -15,10 +15,12 @@ A VST3 insert plug-in for sound design in Cubase, combining an effects chain wit
 The SDK is a pinned git submodule in `external/`:
 
 ```powershell
-git clone --recursive <repo-url>
+git -c core.longpaths=true clone --recurse-submodules <repo-url>
 # or, in an existing clone:
-git submodule update --init --recursive
+git -c core.longpaths=true submodule update --init --recursive
 ```
+
+Long paths are needed if you clone into a deep folder, because some of the SDK's sample files would otherwise exceed the Windows path limit.
 
 ## Building
 
