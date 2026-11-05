@@ -186,4 +186,3 @@ These tests run much faster than real time, which matters when writing new ones:
 - Sample-exact grid alignment assumes that Cubase's reported position refers to the audio entering the plug-in. This hasn't been measured in Cubase, and an error would be at most 96 samples.
 - Modes with sharp corners still alias at extreme settings: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB.
 - Starting a drag on a very long loop with the post saturator on can freeze the panel for a few seconds, because the export runs on the UI thread.
-- The vendor details in `src/PluginConfig.h` are placeholders.

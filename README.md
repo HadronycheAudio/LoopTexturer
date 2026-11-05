@@ -90,4 +90,9 @@ In both modes:
 
 ## Licence
 
-VST3 SDK: MIT (`external/vst3sdk/LICENSE.txt`)
+LoopTexturer is released under the MIT licence: see `LICENSE`.
+
+It's built with the following, which keep their own licences:
+
+- VST3 SDK: MIT (`external/vst3sdk/LICENSE.txt`)
+- VSTGUI (`external/vst3sdk/vstgui4/LICENSE`)

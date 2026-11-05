@@ -1,12 +1,12 @@
 #pragma once
 
-// Identity of the plug-in. Replace the placeholder vendor details before distributing it.
-// Once released, keep the FUIDs: hosts use them to find the plug-in and restore saved projects.
+// Identity of the plug-in. Keep the FUIDs as they are: hosts use them to find the plug-in and restore
+// saved projects.
 
 #define LOOPTEXTURER_NAME "LoopTexturer"
-#define LOOPTEXTURER_VENDOR "Your Company"
-#define LOOPTEXTURER_URL "https://www.example.com"
-#define LOOPTEXTURER_EMAIL "mailto:support@example.com"
+#define LOOPTEXTURER_VENDOR "Hadronyche"
+#define LOOPTEXTURER_URL ""
+#define LOOPTEXTURER_EMAIL ""
 
 // Class IDs, passed to Steinberg::FUID (a, b, c, d)
 #define LOOPTEXTURER_PROCESSOR_UID 0x2402746B, 0x3F884603, 0x87927853, 0x1D2D1EF1
