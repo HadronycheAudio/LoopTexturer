@@ -5,8 +5,6 @@
 
 #include "public.sdk/source/common/memorystream.h"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstdio>

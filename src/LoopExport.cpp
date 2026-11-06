@@ -28,6 +28,9 @@ fs::path getExportFolder ()
 #if defined(_WIN32)
     if (const wchar_t* localAppData = _wgetenv (L"LOCALAPPDATA"))
         return fs::path (localAppData) / "LoopTexturer" / "Exports";
+#elif defined(__APPLE__)
+    if (const char* home = std::getenv ("HOME"))
+        return fs::path (home) / "Library" / "Application Support" / "LoopTexturer" / "Exports";
 #endif
     std::error_code error;
     return fs::temp_directory_path (error) / "LoopTexturer" / "Exports";

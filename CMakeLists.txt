@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
+# The oldest macOS it runs on. This has to come before project (), or it defaults to the build machine's own.
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "The oldest macOS supported")
+
 project(LoopTexturer VERSION 1.1.2 LANGUAGES CXX)
 
 # Can point at another checkout, to work on the library and a plug-in together.
@@ -14,7 +17,7 @@ include("${HADRONYCHE_CORE_DIR}/cmake/HadronychePlugin.cmake")
 hadronyche_use_vst3_sdk()
 
 # --- Plug-in ------------------------------------------------------------------
-hadronyche_add_plugin(LoopTexturer SOURCES
+hadronyche_add_plugin(LoopTexturer AU_TYPE aufx AU_SUBTYPE LpTx SOURCES
     src/PluginConfig.h
     src/PluginEntry.cpp
     src/Messages.h

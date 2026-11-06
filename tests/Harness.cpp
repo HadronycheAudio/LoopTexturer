@@ -2,8 +2,6 @@
 
 #include "Messages.h"
 
-#include <windows.h>
-
 #include <algorithm>
 #include <cmath>
 
@@ -142,7 +140,7 @@ void useSyncMode (Plug& plug)
         plug.settle (0.01);
 
         if (!isReady)
-            Sleep (100);
+            sleepMilliseconds (100);
     }
     check ("the tempo sync tape was allocated", isReady);
 

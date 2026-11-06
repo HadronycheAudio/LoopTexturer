@@ -7,3 +7,6 @@ This product is built with the VST 3 SDK and VSTGUI by Steinberg Media Technolog
 licences are included in this folder, alongside LoopTexturer's own.
 
 It also includes HadronycheCore, Copyright (c) 2026 Hadronyche, whose licence is in this folder too.
+
+The macOS version also includes Apple's AudioUnitSDK, Copyright (c) Apple Inc., whose licence is in this
+folder too.
