@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <random>
 #include <tuple>
 
@@ -310,6 +311,67 @@ void testAliasing ()
     const double moderate = measure (0, 12, 5000, 7000);
     std::printf ("  hard clip, 5 kHz, 12 dB of drive, alias at 7 kHz: %.1f dB\n", moderate);
     check ("hard clip at a moderate setting", moderate < -50.0);
+}
+
+void testBrokenInput ()
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN ();
+    const float infinity = std::numeric_limits<float>::infinity ();
+
+    const auto breakSamples = [&] (Samples samples) {
+        samples[1000] = nan;
+        samples[2000] = infinity;
+        samples[3000] = -infinity;
+        return samples;
+    };
+
+    // Through the whole chain. A filter's state would otherwise hold on to a broken sample for ever.
+    {
+        Plug plug;
+        plug.set (kFilterFreq, 1000);
+        plug.settle ();
+
+        const auto tone = sine (300.0, 0.5, 0.5);
+        Samples left;
+        Samples right;
+        plug.run (breakSamples (tone), tone, left, right);
+        check ("a broken sample on the left doesn't reach the output", isFinite (left) && isFinite (right));
+        plug.run (tone, breakSamples (tone), left, right);
+        check ("nor on the right", isFinite (left) && isFinite (right));
+
+        plug.run (tone, tone, left, right);
+        const double level = rms (left, left.size () / 2);
+        std::printf ("  afterwards, the level is %.3f\n", level);
+        check ("and it carries on working", isFinite (left) && isFinite (right) && level > 0.1);
+    }
+
+    // Into the loop, which would otherwise keep it for as long as the loop exists.
+    {
+        Plug plug;
+        plug.looperOnly ();
+        plug.set (kLooperFreeLength, 1.0);
+        plug.settle (0.8);
+
+        plug.pressButton (Looper::kCommandRec);
+        Samples out;
+        plug.runMono (breakSamples (sine (300.0, 0.5, 1.0)), out);
+        plug.runMono (silence (0.1), out);
+        plug.pressButton (Looper::kCommandOverdub);
+        plug.settle (0.05);
+
+        plug.runMono (silence (2.0), out);
+        const double level = rms (out);
+        std::printf ("  the loop plays back at %.3f\n", level);
+        check ("a broken sample doesn't get into the loop", isFinite (out) && level > 0.1);
+
+        // A project saved now would otherwise hold it too.
+        Plug restored;
+        restored.setStateBytes (plug.getStateBytes ());
+        restored.looperOnly ();
+        restored.settle (0.05);
+        restored.runMono (silence (1.0), out);
+        check ("nor into a saved project", isFinite (out));
+    }
 }
 
 void testExtremeSettings ()

@@ -21,6 +21,7 @@ void testLfos ();
 void testFilter ();
 void testSaturators ();
 void testAliasing ();
+void testBrokenInput ();
 void testExtremeSettings ();
 void testParameterState ();
 void testParameterText ();
