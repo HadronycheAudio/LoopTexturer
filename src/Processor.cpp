@@ -2,7 +2,10 @@
 
 #include "Controller.h"
 #include "Messages.h"
-#include "dsp/Smoother.h"
+#include "dsp/FloatGain.h"
+
+#include "hadronyche/dsp/Denormals.h"
+#include "hadronyche/dsp/Gain.h"
 
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
@@ -11,10 +14,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
-
-#if defined(_M_X64) || defined(__x86_64__)
-#include <xmmintrin.h>
-#endif
 
 using namespace Steinberg;
 
@@ -29,19 +28,6 @@ constexpr int64 kMaxSavedFrames = int64 (1) << 31;
 constexpr int kStreamChunkFloats = 1 << 16;
 constexpr auto kWorkerInterval = std::chrono::milliseconds (50);
 
-// Stops very small values in the filters from slowing the CPU down.
-class FlushDenormals
-{
-public:
-#if defined(_M_X64) || defined(__x86_64__)
-    FlushDenormals () : _previous (_mm_getcsr ()) { _mm_setcsr (_previous | 0x8040); }
-    ~FlushDenormals () { _mm_setcsr (_previous); }
-
-private:
-    unsigned int _previous;
-#endif
-};
-
 float qFromResonance (double percent)
 {
     return static_cast<float> (kMinQ * std::pow (kMaxQ / kMinQ, percent / 100.0));
@@ -49,18 +35,18 @@ float qFromResonance (double percent)
 
 float volumeToGain (double db)
 {
-    return db <= kVolumeSilenceDb ? 0.0f : dbToGain (db);
+    return static_cast<float> (Hadronyche::volumeToGain (db));
 }
 
 // Full dry and full wet meet in the middle, so nothing drops in level while the loop is empty.
 float dryGainFromMix (double percent)
 {
-    return static_cast<float> (std::min (1.0, 2.0 * (1.0 - percent / 100.0)));
+    return static_cast<float> (Hadronyche::dryGain (percent));
 }
 
 float wetGainFromMix (double percent)
 {
-    return static_cast<float> (std::min (1.0, 2.0 * percent / 100.0));
+    return static_cast<float> (Hadronyche::wetGain (percent));
 }
 
 Looper::Transport getTransport (const Vst::ProcessContext* context)
@@ -114,16 +100,10 @@ void buildOverview (Tape& tape, int64_t frames)
 
 } // namespace
 
-Processor::Processor () : _bridge (LooperBridge::create ()), _looper (*_bridge, Saturator::kLatency)
+Processor::Processor () : _params (getParamSpec), _bridge (LooperBridge::create ()), _looper (*_bridge, Saturator::kLatency)
 {
     setControllerClass (Controller::getClassFUID ());
     processContextRequirements.needTransportState ().needProjectTimeMusic ().needBarPositionMusic ().needTempo ().needTimeSignature ();
-
-    for (Vst::ParamID id = 0; id < kParamCount; ++id)
-    {
-        const auto& spec = getParamSpec (id);
-        _params[id] = plainToNormalized (spec, spec.defaultValue);
-    }
 }
 
 tresult PLUGIN_API Processor::initialize (FUnknown* context)
@@ -254,27 +234,7 @@ uint32 PLUGIN_API Processor::getTailSamples ()
 
 double Processor::plain (ParamId id) const
 {
-    return normalizedToPlain (getParamSpec (id), _params[id]);
-}
-
-void Processor::readParameterChanges (Vst::IParameterChanges* changes)
-{
-    if (!changes)
-        return;
-
-    const int32 count = changes->getParameterCount ();
-    for (int32 i = 0; i < count; ++i)
-    {
-        auto* queue = changes->getParameterData (i);
-        if (!queue || queue->getParameterId () >= kParamCount || queue->getPointCount () == 0)
-            continue;
-
-        // Smoothing covers the rest, so only the last value in each block is needed.
-        int32 offset = 0;
-        Vst::ParamValue value = 0.0;
-        if (queue->getPoint (queue->getPointCount () - 1, offset, value) == kResultTrue)
-            _params[queue->getParameterId ()] = value;
-    }
+    return _params.plain (id);
 }
 
 void Processor::applyParameters ()
@@ -367,7 +327,7 @@ void Processor::prepareDsp ()
 
 tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
 {
-    readParameterChanges (data.inputParameterChanges);
+    _params.readChanges (data.inputParameterChanges);
 
     if (data.numOutputs == 0 || data.numSamples == 0)
         return kResultOk;
@@ -380,7 +340,7 @@ tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
         return kResultOk;
     }
 
-    const FlushDenormals flushDenormals;
+    const Hadronyche::FlushDenormals flushDenormals;
     applyParameters ();
     _looper.beginBlock (getLooperSettings (), getTransport (data.processContext));
 
@@ -399,21 +359,21 @@ tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
         float right = hasInput ? inputRight[i] : 0.0f;
 
         // Gain
-        const float gain = _gain.next ();
+        const float gain = _gain.nextFloat ();
         left *= gain;
         right *= gain;
 
         // Pan: an equal-power balance, scaled to leave the signal unchanged in the centre.
         const float panLfo = _panLfo.next ();
-        const float position = std::clamp (_pan.next () + _panLfoAmount.next () * panLfo, -1.0f, 1.0f);
+        const float position = std::clamp (_pan.nextFloat () + _panLfoAmount.nextFloat () * panLfo, -1.0f, 1.0f);
         const float angle = (position + 1.0f) * quarterPi;
         left *= std::cos (angle) * sqrt2;
         right *= std::sin (angle) * sqrt2;
 
         // Filter
         const float filterLfo = _filterLfo.next ();
-        const float pitch = _filterPitch.next () + _filterLfoAmount.next () * filterLfo;
-        _filter.setCoefficients (std::pow (2.0f, pitch), _filterQ.next ());
+        const float pitch = _filterPitch.nextFloat () + _filterLfoAmount.nextFloat () * filterLfo;
+        _filter.setCoefficients (std::pow (2.0f, pitch), _filterQ.nextFloat ());
         left = _filter.process (left, 0);
         right = _filter.process (right, 1);
 
@@ -435,13 +395,13 @@ tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
         _postSaturator.process (left, right);
 
         // Dry/wet
-        const float dryGain = _dryGain.next ();
-        const float wetGain = _wetGain.next ();
+        const float dryGain = _dryGain.nextFloat ();
+        const float wetGain = _wetGain.nextFloat ();
         left = dryLeft * dryGain + left * wetGain;
         right = dryRight * dryGain + right * wetGain;
 
         // Volume
-        const float volume = _volume.next ();
+        const float volume = _volume.nextFloat ();
         outputLeft[i] = left * volume;
         outputRight[i] = right * volume;
     }
@@ -583,11 +543,7 @@ tresult PLUGIN_API Processor::getState (IBStream* state)
     if (!state)
         return kResultFalse;
 
-    ParamValues values;
-    for (size_t id = 0; id < values.size (); ++id)
-        values[id] = _params[id];
-
-    if (!writeParamState (state, values))
+    if (!writeParamState (state, _params.snapshot ()))
         return kResultFalse;
 
     return writeLoopState (state) ? kResultOk : kResultFalse;

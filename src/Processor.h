@@ -6,8 +6,10 @@
 #include "dsp/Lfo.h"
 #include "dsp/Looper.h"
 #include "dsp/Saturator.h"
-#include "dsp/Smoother.h"
 #include "dsp/StateVariableFilter.h"
+
+#include "hadronyche/dsp/Smoother.h"
+#include "hadronyche/vst/ParamStore.h"
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 
@@ -49,7 +51,6 @@ public:
 
 private:
     double plain (ParamId id) const;
-    void readParameterChanges (Steinberg::Vst::IParameterChanges* changes);
     void applyParameters ();
     void prepareDsp ();
     Looper::Settings getLooperSettings () const;
@@ -58,8 +59,9 @@ private:
     void readLoopState (Steinberg::IBStream* state);
     void runWorker ();
 
-    // Written from the host's threads and read on the audio thread.
-    std::array<std::atomic<double>, kParamCount> _params;
+    using Smoother = Hadronyche::Smoother;
+
+    Hadronyche::ParamStore<kParamCount> _params;
 
     Smoother _gain;
     Smoother _volume;

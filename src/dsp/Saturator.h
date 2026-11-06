@@ -1,13 +1,16 @@
 #pragma once
 
 #include "Oversampler.h"
-#include "Smoother.h"
+
+#include "hadronyche/dsp/Smoother.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 
 namespace LoopTexturer {
+
+using Hadronyche::Smoother;
 
 // A stereo multi-mode saturator with drive and dry/wet mix.
 //
@@ -54,8 +57,8 @@ public:
 
     void process (float& left, float& right)
     {
-        const float drive = _drive.next ();
-        const float mix = _mix.next ();
+        const float drive = _drive.nextFloat ();
+        const float mix = _mix.nextFloat ();
 
         left = processChannel (left, 0, drive, mix);
         right = processChannel (right, 1, drive, mix);

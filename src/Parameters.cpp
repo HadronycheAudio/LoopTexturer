@@ -1,8 +1,7 @@
 #include "Parameters.h"
 
-#include "base/source/fstreamer.h"
+#include "hadronyche/vst/ParamState.h"
 
-#include <algorithm>
 #include <cmath>
 
 using namespace Steinberg;
@@ -55,9 +54,10 @@ const std::array<ParamSpec, kParamCount> kSpecs { {
     { "Post sat drive", "dB", 0.0, 36.0, 0.0, Curve::Linear, 1, nullptr, 0 },
     { "Post sat mix", "%", 0.0, 100.0, 100.0, Curve::Linear, 0, nullptr, 0 },
 
-    { "Volume", "dB", kVolumeSilenceDb, 6.0, 0.0, Curve::Linear, 1, nullptr, 0 },
+    { "Volume", "dB", kVolumeSilenceDb, 6.0, 0.0, Curve::Linear, 1, nullptr, 0, true },
 
-    { "Looper mode", "", 0.0, kLooperModeCount - 1, 0.0, Curve::List, 0, kLooperModes, kLooperModeCount },
+    // Changing the mode clears the loop, which automation shouldn't be able to do.
+    { "Looper mode", "", 0.0, kLooperModeCount - 1, 0.0, Curve::List, 0, kLooperModes, kLooperModeCount, false, false },
     { "Looper length", "s", 0.5, 30.0, 2.0, Curve::Log, 2, nullptr, 0 },
     { "Looper bars", "", 0.0, kLooperBarChoiceCount - 1, 1.0, Curve::List, 0, kLooperBarChoices, kLooperBarChoiceCount },
     { "Looper custom bars", "bars", 1.0, 64.0, 16.0, Curve::Integer, 0, nullptr, 0 },
@@ -72,79 +72,22 @@ const ParamSpec& getParamSpec (Vst::ParamID id)
     return kSpecs[id];
 }
 
-double normalizedToPlain (const ParamSpec& spec, double normalized)
-{
-    const double n = std::clamp (normalized, 0.0, 1.0);
-    switch (spec.curve)
-    {
-        case Curve::Linear: return spec.min + (spec.max - spec.min) * n;
-        case Curve::Log: return spec.min * std::pow (spec.max / spec.min, n);
-        case Curve::List: return std::round (n * (spec.labelCount - 1));
-        case Curve::Toggle: return n >= 0.5 ? 1.0 : 0.0;
-        case Curve::Integer: return std::round (spec.min + (spec.max - spec.min) * n);
-    }
-    return spec.min;
-}
-
-double plainToNormalized (const ParamSpec& spec, double plain)
-{
-    const double p = std::clamp (plain, spec.min, spec.max);
-    switch (spec.curve)
-    {
-        case Curve::Log: return std::log (p / spec.min) / std::log (spec.max / spec.min);
-        case Curve::Linear:
-        case Curve::List:
-        case Curve::Toggle:
-        case Curve::Integer: return (p - spec.min) / (spec.max - spec.min);
-    }
-    return 0.0;
-}
-
 bool writeParamState (IBStream* stream, const ParamValues& normalizedValues)
 {
-    IBStreamer streamer (stream, kLittleEndian);
-    if (!streamer.writeInt32 (kStateVersion) || !streamer.writeInt32 (kParamCount))
-        return false;
-
-    for (int32 id = 0; id < kParamCount; ++id)
-    {
-        if (!streamer.writeInt32 (id) || !streamer.writeDouble (normalizedValues[static_cast<size_t> (id)]))
-            return false;
-    }
-    return true;
+    return Hadronyche::writeParamState (stream, kStateVersion, normalizedValues.data (), kParamCount);
 }
 
-bool readParamState (IBStream* stream, const std::function<void (Vst::ParamID, double)>& onValue, int* versionOut)
+bool readParamState (IBStream* stream, const std::function<void (Vst::ParamID, double)>& onValue, int* version)
 {
-    IBStreamer streamer (stream, kLittleEndian);
-
-    int32 version = 0;
-    int32 count = 0;
-    if (!streamer.readInt32 (version) || version < 1 || version > kStateVersion || !streamer.readInt32 (count))
-        return false;
-
-    for (int32 i = 0; i < count; ++i)
-    {
-        int32 id = 0;
-        double value = 0.0;
-        if (!streamer.readInt32 (id) || !streamer.readDouble (value))
-            return false;
-
-        if (id < 0 || id >= kParamCount || !std::isfinite (value))
-            continue;
-
-        value = std::clamp (value, 0.0, 1.0);
-        if (version < 3 && id == kLooperFreeLength)
+    const auto convertOldValues = [&onValue] (Vst::ParamID id, double value, int32 savedVersion) {
+        if (savedVersion < 3 && id == kLooperFreeLength)
         {
             const auto& spec = getParamSpec (kLooperFreeLength);
             value = plainToNormalized (spec, spec.min * std::pow (kVersion2MaxLength / spec.min, value));
         }
-        onValue (static_cast<Vst::ParamID> (id), value);
-    }
-
-    if (versionOut)
-        *versionOut = version;
-    return true;
+        onValue (id, value);
+    };
+    return Hadronyche::readParamState (stream, kStateVersion, kParamCount, convertOldValues, version);
 }
 
 } // namespace LoopTexturer

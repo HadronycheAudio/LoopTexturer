@@ -1,10 +1,12 @@
 #pragma once
 
-#include "Smoother.h"
+#include "hadronyche/dsp/Smoother.h"
 
 #include <cstdint>
 
 namespace LoopTexturer {
+
+using Hadronyche::Smoother;
 
 // A free-running LFO with a bipolar output, from -1 to 1.
 class Lfo
@@ -44,7 +46,7 @@ public:
         }
 
         _slew.setTarget (shape ());
-        return _slew.next ();
+        return _slew.nextFloat ();
     }
 
 private:

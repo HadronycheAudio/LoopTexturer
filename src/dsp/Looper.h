@@ -1,14 +1,17 @@
 #pragma once
 
 #include "../LooperBridge.h"
-#include "Smoother.h"
 #include "Tape.h"
+
+#include "hadronyche/dsp/Smoother.h"
 
 #include <array>
 #include <atomic>
 #include <cstdint>
 
 namespace LoopTexturer {
+
+using Hadronyche::Smoother;
 
 // The looper, modelled as a tape read and written at a variable speed by a single head. The two
 // modes only differ in what moves the head:

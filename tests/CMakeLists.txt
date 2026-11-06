@@ -18,7 +18,7 @@ add_executable(LoopTexturerTests
 
 target_include_directories(LoopTexturerTests PRIVATE "${VST3_SDK_DIR}" "${CMAKE_SOURCE_DIR}/src")
 target_compile_definitions(LoopTexturerTests PRIVATE UNICODE _UNICODE NOMINMAX)
-target_link_libraries(LoopTexturerTests PRIVATE user32 gdi32)
+target_link_libraries(LoopTexturerTests PRIVATE hadronyche_params user32 gdi32)
 add_dependencies(LoopTexturerTests LoopTexturer)
 
 # One CTest test per test in the program, so that a single one can be run with ctest -R.

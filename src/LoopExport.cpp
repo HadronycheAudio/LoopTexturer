@@ -1,7 +1,7 @@
 #include "LoopExport.h"
 
 #include "dsp/Saturator.h"
-#include "dsp/Smoother.h"
+#include "dsp/FloatGain.h"
 
 #include <algorithm>
 #include <chrono>

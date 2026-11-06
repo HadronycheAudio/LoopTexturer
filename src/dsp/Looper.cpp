@@ -412,7 +412,7 @@ void Looper::updateEnvelopes ()
     _overdubEnvelope = moveTowards (_overdubEnvelope, _isOverdubbing ? 1.0f : 0.0f, _envelopeStep);
     _wetEnvelope = moveTowards (_wetEnvelope, _wetTarget, _envelopeStep);
 
-    _currentFeedback = _feedback.next ();
+    _currentFeedback = _feedback.nextFloat ();
     if (std::abs (_currentFeedback - 1.0f) < kUnityFeedbackMargin)
         _currentFeedback = 1.0f;
 }
@@ -504,7 +504,7 @@ void Looper::processFree (float inLeft, float inRight, float& left, float& right
         return;
 
     const int64_t frames = tape->getCapacity ();
-    const double speed = _speed.nextPrecise ();
+    const double speed = _speed.next ();
 
     if (!_freePlaying)
     {
