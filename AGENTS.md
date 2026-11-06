@@ -73,6 +73,7 @@ People use this plug-in in real projects. Breaking these rules damages saved pro
 ### Sound and timing
 
 - **The reported latency must always be true.** It's 96 samples: 48 from each saturator (`Oversampler::kLatency`), at every sample rate and whether or not they're on, so that toggling them doesn't shift audio. Anything that changes it must update `Processor::getLatencySamples`, the dry delay in `Processor::process`, the `inputLatency` given to `Looper`, and the samples skipped in `exportLoop`.
+- **Broken samples at the input become silence, before anything else.** A NaN or infinite sample would otherwise stay in the filters and the loop for ever, and `broken-input` checks this.
 - **`Oversampler::kTaps` must stay of the form 4n + 1.** That's what makes its latency a whole number of samples, so that the dry signal stays perfectly aligned.
 - **The looper reads and writes with one head at one position.** Separate heads, or any delay in the feedback path, would misalign overdubs and shift the loop on every pass.
 - **At 100% feedback, the loop must stay bit-exact.** Feedback works directly on stored cells, and `writeSpan` skips writing when nothing changes. Don't route feedback through an interpolated read.

@@ -355,8 +355,9 @@ tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
 
     for (int32 i = 0; i < data.numSamples; ++i)
     {
-        float left = hasInput ? inputLeft[i] : 0.0f;
-        float right = hasInput ? inputRight[i] : 0.0f;
+        // A broken sample upstream would otherwise stay in the filters and the loop for ever.
+        float left = hasInput && std::isfinite (inputLeft[i]) ? inputLeft[i] : 0.0f;
+        float right = hasInput && std::isfinite (inputRight[i]) ? inputRight[i] : 0.0f;
 
         // Gain
         const float gain = _gain.nextFloat ();

@@ -31,6 +31,7 @@ const Test kTests[] = {
     { L"filter", testFilter },
     { L"saturator", testSaturators },
     { L"aliasing", testAliasing },
+    { L"broken-input", testBrokenInput },
     { L"extreme-settings", testExtremeSettings },
     { L"parameter-state", testParameterState },
     { L"parameter-text", testParameterText },

@@ -18,7 +18,7 @@ add_dependencies(LoopTexturerTests LoopTexturer)
 
 set(LOOPTEXTURER_TESTS
     class-ids parameter-ids parameter-ranges parameter-labels saved-format older-project older-length older-tape-replaced
-    latency gain-volume pan lfo filter saturator aliasing extreme-settings parameter-state parameter-text
+    latency gain-volume pan lfo filter saturator aliasing broken-input extreme-settings parameter-state parameter-text
     free-playback free-exact-timing free-length-repitches free-each-length overdub
     feedback-unity feedback-below-unity feedback-above-unity feedback-keeps-low-end dry-wet clear rec-moves-to-overdub free-stop-play
     sync-grid sync-lengths sync-open-ended sync-64-bars sync-transport sync-tempo-repitches sync-seam sync-overdub sync-locate-cancels saved-loops
