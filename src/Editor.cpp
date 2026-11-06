@@ -21,6 +21,12 @@ namespace LoopTexturer {
 
 namespace {
 
+#if defined(__linux__)
+constexpr bool kCanDrag = false;
+#else
+constexpr bool kCanDrag = true;
+#endif
+
 constexpr Hadronyche::PanelLayout kLayout { 148, 52 };
 
 constexpr int kMargin = kLayout.margin;
@@ -89,7 +95,7 @@ std::string describeStatus (const LooperBridge::Status& status)
             return "Overdubbing";
         if (!isRunning)
             return "Waiting for the transport";
-        return status.isPlaying.load () ? "Playing: drag to the timeline" : "Stopped";
+        return status.isPlaying.load () ? (kCanDrag ? "Playing: drag to the timeline" : "Playing") : "Stopped";
     }
 
     if (status.isRecording.load ())
@@ -98,14 +104,15 @@ std::string describeStatus (const LooperBridge::Status& status)
         return "Overdubbing";
     if (!status.hasContent.load ())
         return "Empty: press Rec";
-    return status.isPlaying.load () ? "Looping: drag to the timeline" : "Stopped: press Play";
+    return status.isPlaying.load () ? (kCanDrag ? "Looping: drag to the timeline" : "Looping") : "Stopped: press Play";
 }
 
 } // namespace
 
 // Draws the loop's waveform and playhead, and drags the loop out of the plug-in as an ordinary
 // operating system file drag. VST3 has no drag API of its own, so the host just sees a file being
-// dropped on it.
+// dropped on it. On Linux, the waveform only draws, by the owner's decision: VSTGUI can't start a
+// drag there, and a host can render or record the plug-in's output instead.
 class WaveformView : public CView
 {
 public:
@@ -142,7 +149,7 @@ public:
 
     void onMouseDownEvent (MouseDownEvent& event) override
     {
-        if (!event.buttonState.isLeft () || _isConfirming)
+        if (!kCanDrag || !event.buttonState.isLeft () || _isConfirming)
             return;
 
         _message.clear ();

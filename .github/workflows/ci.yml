@@ -145,10 +145,101 @@ jobs:
       - name: Test
         run: xvfb-run -a ctest --test-dir build --output-on-failure -j 4
 
+  # The download. Built on the oldest distribution it's for, because a binary needs a glibc as new as the one it's built
+  # against. That distribution's own CMake is too old.
+  linux-package:
+    name: Linux package
+    # A pull request from this repository already ran on push, so this only adds runs for forks.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    container: ubuntu:22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Install what fetching the code needs
+        run: apt-get update && apt-get install -y git
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install the build's packages
+        run: |
+          bash external/hadronychecore/tools/linux/install-build-packages.sh
+          apt-get install -y g++ python3-pip xauth
+          pip3 install "cmake==3.31.*"
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      # This also runs the Steinberg validator, and a failure fails the build.
+      - name: Build
+        run: cmake --build build --target LoopTexturerTests LoopTexturer
+
+      - name: Build the tarball
+        run: bash external/hadronychecore/tools/linux/make-tarball.sh LoopTexturer "$(sed -n 's/^project(LoopTexturer VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)" build/installer
+
+      - name: Test the tarball
+        run: xvfb-run -a bash external/hadronychecore/tools/linux/test-tarball.sh LoopTexturer build/installer/*.tar.gz build/bin/Release/validator build/bin/Release/LoopTexturerTests 2.35
+
+      - name: Keep the tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-linux
+          path: build/installer/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Keep what the next job tests it with
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-test-tools
+          path: |
+            build/bin/Release/validator
+            build/bin/Release/LoopTexturerTests
+            external/hadronychecore/tools/linux/test-tarball.sh
+          if-no-files-found: error
+          retention-days: 1
+
+  # Whether the download runs on other distributions, with only the packages that the README tells people to install.
+  linux-elsewhere:
+    name: Linux on ${{ matrix.distribution }}
+    needs: linux-package
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.distribution }}
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: ['debian:12', 'ubuntu:24.04', 'debian:13']
+
+    steps:
+      - name: Install what the README says, and what the test needs
+        run: |
+          apt-get update
+          apt-get install -y libxcb-cursor0 libxcb-util1 libxkbcommon-x11-0 libcairo2 libpango-1.0-0 libpangocairo-1.0-0 binutils xvfb xauth
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-linux
+          path: installer
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-test-tools
+          path: tools
+
+      # Downloading an artifact loses the files' permissions.
+      - name: Test the tarball
+        run: |
+          chmod +x tools/build/bin/Release/*
+          xvfb-run -a bash tools/external/hadronychecore/tools/linux/test-tarball.sh LoopTexturer installer/*.tar.gz tools/build/bin/Release/validator tools/build/bin/Release/LoopTexturerTests 2.35
+
   # Runs for a version tag, once every build and installer has passed.
   release:
     name: Release
-    needs: [build-and-test, macos, linux]
+    needs: [build-and-test, macos, linux, linux-package, linux-elsewhere]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -165,6 +256,11 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: installer-macos
+          path: installer-output
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-linux
           path: installer-output
 
       - name: Publish the release

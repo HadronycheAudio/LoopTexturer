@@ -12,6 +12,21 @@ A VST® 3 insert plug-in for sound design in Cubase, combining an effects chain 
 
 **On a Mac,** get `LoopTexturer-<version>-macOS.pkg` from the same page. It's a VST 3 and an Audio Unit, for Intel and Apple Silicon, on macOS 10.15 or later. It installs to `/Library/Audio/Plug-Ins`. The installer isn't signed by Apple, so macOS will refuse it the first time: the release notes explain how to open it. See [macOS: untested](#macos-untested) first.
 
+**On Linux,** get `LoopTexturer-<version>-Linux-x86_64.tar.gz` from the same page. It's a VST 3 for x86_64, and it needs glibc 2.34 or later, as on Ubuntu 22.04, Debian 12 or newer. Extract it where hosts look:
+
+```bash
+mkdir -p ~/.vst3
+tar -xzf LoopTexturer-<version>-Linux-x86_64.tar.gz -C ~/.vst3
+```
+
+It needs a few common libraries, which you probably have. On Debian or Ubuntu:
+
+```bash
+sudo apt install libxcb-cursor0 libxcb-util1 libxkbcommon-x11-0 libcairo2 libpango-1.0-0 libpangocairo-1.0-0
+```
+
+There's no LV2 version yet. See [Linux: lightly tested](#linux-lightly-tested) first.
+
 ## macOS: untested
 
 > [!WARNING]
@@ -35,6 +50,32 @@ To run the tests, which leave out the Windows-only panel test:
 ```bash
 cmake --build build --config Release --target LoopTexturerTests
 ctest --test-dir build -C Release --output-on-failure
+```
+
+## Linux: lightly tested
+
+> [!NOTE]
+> **The Linux version is new.** It passes the automated tests on Ubuntu 22.04 and 24.04 and Debian 12 and 13, and it has been tried briefly by hand in REAPER on Debian 13. Other hosts and distributions haven't been tried. Please [open an issue](https://github.com/HadronycheAudio/LoopTexturer/issues/new) saying which distribution and host you use if something goes wrong.
+
+- **There's no dragging to the timeline on Linux.** VSTGUI can't start a drag there, so the feature is turned off. To get the loop as audio, render the track, or route its output to another track and record it.
+
+To build it yourself, you need CMake 3.25 or newer, and the packages that this script installs on Debian or Ubuntu:
+
+```bash
+git clone --recurse-submodules https://github.com/HadronycheAudio/LoopTexturer.git
+cd LoopTexturer
+bash external/hadronychecore/tools/linux/install-build-packages.sh
+cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release --target LoopTexturer
+```
+
+This produces `build/Release/VST3/Release/LoopTexturer.vst3`, and runs the Steinberg validator on the plug-in. To use it, copy it to `~/.vst3`.
+
+To run the tests, which include one that opens the panel and so needs a display or `xvfb-run`:
+
+```bash
+cmake --build build/Release --target LoopTexturerTests
+xvfb-run -a ctest --test-dir build/Release --output-on-failure
 ```
 
 ## Requirements for building
@@ -103,7 +144,7 @@ In both modes:
 
 - Feedback at 100% leaves the loop unchanged. Lower values fade it, and values above 100% push it into distortion. Either way, this keeps changing the loop on every pass.
 - Dry/wet at 50% plays both the live input and the loop at full level.
-- Drag the waveform to the Cubase timeline to get the loop as you hear it, as a WAV file. These files are kept in `%LOCALAPPDATA%\LoopTexturer\Exports`.
+- Drag the waveform to the Cubase timeline to get the loop as you hear it, as a WAV file. These files are kept in `%LOCALAPPDATA%\LoopTexturer\Exports`. On Linux, there's no dragging: render the track, or route its output to another track and record it.
 
 ## Project layout
 
@@ -120,7 +161,11 @@ In both modes:
 | `src/Messages.h` | VST3 message names between the processor and the controller |
 | `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
 | `tests/` | Tests that drive the built plug-in like a host |
-| `installer/` | The Windows installer, and the script that tests it. The macOS installer is built by HadronycheCore's `tools/macos/` |
+| `installer/` | The Windows installer, and the script that tests it. The macOS installer and the Linux tarball are built by HadronycheCore's `tools/macos/` and `tools/linux/` |
+
+## Contributing
+
+LoopTexturer is free software that follows its author's own workflow, and there's no company or support promise behind it. If you find it handy and want it to work better with your host, your distribution or your way of working, you're welcome to take it further. Please [open an issue](https://github.com/HadronycheAudio/LoopTexturer/issues/new) or a pull request. An LV2 version is on the way, and help testing in other hosts is especially useful. `AGENTS.md` lists the rules that keep people's saved projects safe, so please read it before changing anything.
 
 ## Licence
 
