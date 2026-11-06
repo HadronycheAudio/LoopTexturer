@@ -219,7 +219,8 @@ Rules for releases:
 - **Use one build folder per configuration, with Ninja:** `cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release`, then `cmake --build build/Release --target LoopTexturerTests LoopTexturer`. The SDK's Linux output paths break with a multi-configuration generator.
 - **`external/hadronychecore/tools/linux/install-build-packages.sh` installs the build's packages.** gtkmm and SQLite are only needed to configure, and the plug-in doesn't link them.
 - **`panel-opens` needs an X server,** so run `xvfb-run -a ctest ...` where there's no display. It opens and closes the real editor, and nothing more: `panel`, which drives it, only exists on Windows, so the panel's look and its controls need checking by eye.
-- **The version built on a machine only loads on a glibc as new as that machine's.** Nothing here checks that yet, and nothing is released for Linux yet.
+- **The release is built in an `ubuntu:22.04` container on CI, not on the runner,** because a binary only loads on a glibc as new as the one it's built against. HadronycheCore's `tools/linux/test-tarball.sh` checks this, and CI runs the tarball on other distributions too.
+- **There's no LV2 version yet.** Linux releases are VST 3 only.
 
 ## Known limits
 
