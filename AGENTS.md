@@ -10,7 +10,7 @@ Code shared with the other Hadronyche plug-ins is in the `HadronycheCore` submod
 
 ## Commands
 
-The only supported platform is Windows x64 with Visual Studio 2022 and CMake 3.25 or newer.
+Windows x64 with Visual Studio 2022 and CMake 3.25 or newer is where this is developed. macOS is built and tested by CI, on Intel and Apple Silicon, so see [macOS](#macos).
 
 ```powershell
 # Clone. Without long paths, cloning into a folder deeper than about 100 characters fails partway
@@ -52,6 +52,7 @@ People use this plug-in in real projects. Breaking these rules damages saved pro
 
 ### Saved projects
 
+- **Never change the Audio Unit codes,** `aufx` `LpTx` here and the manufacturer `Hdrn` in HadronycheCore. Hosts use them to find the plug-in in saved projects.
 - **Never change the class IDs in `src/PluginConfig.h`.** Cubase uses them to find the plug-in in saved projects.
 - **Never renumber, reorder or remove entries in `ParamId`** (`src/Parameters.h`). Their values are saved in projects and automation. Add new parameters just before `kParamCount`, and add the matching row to `kSpecs` in `src/Parameters.cpp`, which is listed in the same order.
 - **Don't change the range or curve of an existing parameter.** Hosts store values normalized to 0..1, so this silently changes what saved projects sound like. If it's unavoidable, migrate old values and bump the state version.
@@ -205,11 +206,20 @@ Rules for releases:
 - **The installer must keep shipping the licence files.** The VST 3 SDK's, VSTGUI's and HadronycheCore's licences require their notices to accompany binaries.
 - **Follow Steinberg's usage guidelines** (`external/vst3sdk/VST3_Usage_Guidelines.pdf`) wherever "VST" appears in product-related material: use ® on first mention, include the sentence "VST is a registered trademark of Steinberg Media Technologies GmbH.", show the logo from `docs/images/` unaltered, and don't put "VST" in product or company names.
 
+## macOS
+
+- **Build with the Xcode generator,** which the SDK's Audio Unit wrapper needs: `cmake -S . -B build -G Xcode`, then `cmake --build build --config Release --target LoopTexturerTests LoopTexturer LoopTexturer-au`.
+- **`CMAKE_OSX_DEPLOYMENT_TARGET` has to stay before `project ()`,** or the plug-in only loads on macOS as new as the build machine, and only an older Mac would notice. `test-installer.sh` checks for this, because a host on the build machine wouldn't.
+- **The SDK's `-ffast-math` stays off,** as HadronycheCore's AGENTS.md explains.
+- **The installer is built and tested by HadronycheCore's `tools/macos/`.** `test-installer.sh` writes to `/Library`, so it's meant for CI machines.
+- **The panel test only exists on Windows,** because it uses Windows' mouse messages. Nothing automated opens the panel on macOS, so its look needs checking by eye.
+
 ## Known limits
 
-- It has only been built and used on Windows, and Cubase is the only host it's been used in.
+- It has only been used on Windows, and Cubase is the only host it's been used in.
 - Sample-exact grid alignment assumes that Cubase's reported position refers to the audio entering the plug-in. This hasn't been measured in Cubase, and an error would be at most 96 samples.
 - Modes with sharp corners still alias at extreme settings: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB.
-- The installer isn't code-signed, so Windows warns users when they run it.
+- The installer isn't code-signed, so Windows warns users when they run it. The macOS one isn't signed by Apple or notarized, so macOS refuses it until the user allows it.
+- The Mac version hasn't been used in a real host on a real Mac. The tests measure its output, and Apple's `auval` validates it, on CI only.
 - Starting a drag on a very long loop with the post saturator on can freeze the panel for a few seconds, because the export runs on the UI thread.
 - Length automation written before version 3 plays back at different lengths, because hosts store it normalized and the range has since changed.

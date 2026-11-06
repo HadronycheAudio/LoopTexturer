@@ -70,10 +70,53 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Runs for a version tag, once both builds and the installer have passed.
+  macos:
+    name: ${{ matrix.runner }}
+    # A pull request from this repository already ran on push, so this only adds runs for forks.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both build the same universal binaries, and each runs the half that it can.
+        runner: [macos-15, macos-15-intel]
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -S . -B build -G Xcode
+
+      # This also runs the Steinberg validator, and a failure fails the build.
+      - name: Build
+        run: cmake --build build --config Release --target LoopTexturerTests LoopTexturer LoopTexturer-au
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Build the installer
+        run: bash external/hadronychecore/tools/macos/make-installer.sh LoopTexturer "$(sed -n 's/^project(LoopTexturer VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)" build/installer
+
+      - name: Test the installer
+        run: bash external/hadronychecore/tools/macos/test-installer.sh LoopTexturer build/installer/*.pkg build/bin/Release/validator build/bin/Release/LoopTexturerTests aufx LpTx 10.15
+
+      - name: Keep the installer
+        if: matrix.runner == 'macos-15'
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-macos
+          path: build/installer/*.pkg
+          if-no-files-found: error
+          retention-days: 7
+
+  # Runs for a version tag, once every build and installer has passed.
   release:
     name: Release
-    needs: build-and-test
+    needs: [build-and-test, macos]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -87,8 +130,13 @@ jobs:
           name: installer
           path: installer-output
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-macos
+          path: installer-output
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" installer-output/*.exe --title "LoopTexturer $TAG" --notes-file "docs/release-notes/$TAG.md" --verify-tag
+        run: gh release create "$TAG" installer-output/* --title "LoopTexturer $TAG" --notes-file "docs/release-notes/$TAG.md" --verify-tag

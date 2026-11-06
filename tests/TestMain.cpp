@@ -61,12 +61,18 @@ const Test kTests[] = {
     { L"sync-locate-cancels", testSyncLocateCancels },
     { L"saved-loops", testSavedLoops },
 
+#if defined(_WIN32)
     { L"panel", testPanel },
+#endif
 };
 
 } // namespace
 
-int wmain (int argc, wchar_t** argv)
+HADRONYCHE_TEST_MAIN
 {
+#if defined(_WIN32)
     return runTests (argc, argv, { "LoopTexturerTests", kTests, std::size (kTests), measureCpu, useTemporaryExportFolder, removeTemporaryExportFolder });
+#else
+    return runTests (argc, argv, { "LoopTexturerTests", kTests, std::size (kTests), measureCpu });
+#endif
 }

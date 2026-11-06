@@ -9,12 +9,16 @@ add_executable(LoopTexturerTests
     CompatibilityTests.cpp
     ChainTests.cpp
     LooperTests.cpp
-    PanelTest.cpp
 )
 
 target_include_directories(LoopTexturerTests PRIVATE "${CMAKE_SOURCE_DIR}/src")
 target_link_libraries(LoopTexturerTests PRIVATE hadronyche_testhost)
 add_dependencies(LoopTexturerTests LoopTexturer)
+
+# It drives a real window with Windows' mouse messages.
+if(WIN32)
+    target_sources(LoopTexturerTests PRIVATE PanelTest.cpp)
+endif()
 
 set(LOOPTEXTURER_TESTS
     class-ids parameter-ids parameter-ranges parameter-labels saved-format older-project older-length older-tape-replaced

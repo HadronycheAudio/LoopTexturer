@@ -10,8 +10,6 @@
 #include "pluginterfaces/base/ustring.h"
 #include "public.sdk/source/common/memorystream.h"
 
-#include <windows.h>
-
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -367,7 +365,7 @@ void testOlderTapeReplaced ()
     Samples out;
     for (int attempt = 0; attempt < 300 && !isRecording; ++attempt)
     {
-        Sleep (20);
+        sleepMilliseconds (20);
         plug.settle (0.8);
         plug.pressButton (Looper::kCommandRec);
         plug.runMono (slice (in, 0, 4800), out);
