@@ -10,7 +10,32 @@ A VST® 3 insert plug-in for sound design in Cubase, combining an effects chain 
 
 **On Windows,** get the installer from the [latest release](https://github.com/HadronycheAudio/LoopTexturer/releases/latest). It needs 64-bit Windows 10 or later, and installs to `C:\Program Files\Common Files\VST3`. The installer isn't code-signed, so Windows will probably warn you: choose **More info**, then **Run anyway**.
 
-**On a Mac,** get `LoopTexturer-<version>-macOS.pkg` from the same page. It's a VST 3 and an Audio Unit, for Intel and Apple Silicon, on macOS 10.15 or later. It installs to `/Library/Audio/Plug-Ins`. The installer isn't signed by Apple, so macOS will refuse it the first time: the release notes explain how to open it. The Mac version hasn't been used in a real host yet.
+**On a Mac,** get `LoopTexturer-<version>-macOS.pkg` from the same page. It's a VST 3 and an Audio Unit, for Intel and Apple Silicon, on macOS 10.15 or later. It installs to `/Library/Audio/Plug-Ins`. The installer isn't signed by Apple, so macOS will refuse it the first time: the release notes explain how to open it. See [macOS: untested](#macos-untested) first.
+
+## macOS: untested
+
+> [!WARNING]
+> **The Mac versions are untested.** They pass automated tests and Apple's Audio Unit validation on build machines, on both Intel and Apple Silicon, but nobody has used them in a real host on a real Mac yet. Nothing has checked how they sound, or how the panel looks.
+
+**Are you a Mac user who's ready to commit to testing? You're more than welcome!** Please [open an issue](https://github.com/HadronycheAudio/LoopTexturer/issues/new) saying which Mac, macOS version and host you use.
+
+To build it yourself, you need Xcode, CMake 3.25 or newer, and an internet connection the first time, which fetches Apple's AudioUnitSDK:
+
+```bash
+git clone --recurse-submodules https://github.com/HadronycheAudio/LoopTexturer.git
+cd LoopTexturer
+cmake -S . -B build -G Xcode
+cmake --build build --config Release --target LoopTexturer LoopTexturer-au
+```
+
+This produces `build/VST3/Release/LoopTexturer.vst3` and `build/VST3/Release/LoopTexturer.component`, for Intel and Apple Silicon, and runs the Steinberg validator on the plug-in. The build also copies the Audio Unit to `~/Library/Audio/Plug-Ins/Components`, where it keeps pointing at your build folder. To use the VST 3, copy it to `~/Library/Audio/Plug-Ins/VST3`.
+
+To run the tests, which leave out the Windows-only panel test:
+
+```bash
+cmake --build build --config Release --target LoopTexturerTests
+ctest --test-dir build -C Release --output-on-failure
+```
 
 ## Requirements for building
 
