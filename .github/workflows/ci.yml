@@ -141,8 +141,9 @@ jobs:
       - name: Build
         run: cmake --build build --target LoopTexturerTests LoopTexturer
 
+      # Through xvfb-run, because panel-opens needs an X server.
       - name: Test
-        run: ctest --test-dir build --output-on-failure -j 4
+        run: xvfb-run -a ctest --test-dir build --output-on-failure -j 4
 
   # Runs for a version tag, once every build and installer has passed.
   release:

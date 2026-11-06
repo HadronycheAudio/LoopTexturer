@@ -218,7 +218,7 @@ Rules for releases:
 
 - **Use one build folder per configuration, with Ninja:** `cmake -S . -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release`, then `cmake --build build/Release --target LoopTexturerTests LoopTexturer`. The SDK's Linux output paths break with a multi-configuration generator.
 - **`external/hadronychecore/tools/linux/install-build-packages.sh` installs the build's packages.** gtkmm and SQLite are only needed to configure, and the plug-in doesn't link them.
-- **The panel test only exists on Windows,** because it uses Windows' mouse messages. Nothing automated opens the panel on Linux, so its look needs checking by eye.
+- **`panel-opens` needs an X server,** so run `xvfb-run -a ctest ...` where there's no display. It opens and closes the real editor, and nothing more: `panel`, which drives it, only exists on Windows, so the panel's look and its controls need checking by eye.
 - **The version built on a machine only loads on a glibc as new as that machine's.** Nothing here checks that yet, and nothing is released for Linux yet.
 
 ## Known limits
@@ -227,7 +227,7 @@ Rules for releases:
 - Sample-exact grid alignment assumes that Cubase's reported position refers to the audio entering the plug-in. This hasn't been measured in Cubase, and an error would be at most 96 samples.
 - Modes with sharp corners still alias at extreme settings: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB.
 - The installer isn't code-signed, so Windows warns users when they run it. The macOS one isn't signed by Apple or notarized, so macOS refuses it until the user allows it.
-- The Linux version has only been run by the tests and the validator, and hasn't been used in a real host.
+- The Linux version has only been tried briefly, in REAPER on Debian 13, by the owner.
 - The Mac version hasn't been used in a real host on a real Mac. The tests measure its output, and Apple's `auval` validates it, on CI only.
 - Starting a drag on a very long loop with the post saturator on can freeze the panel for a few seconds, because the export runs on the UI thread.
 - Length automation written before version 3 plays back at different lengths, because hosts store it normalized and the range has since changed.
