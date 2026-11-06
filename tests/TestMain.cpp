@@ -6,18 +6,13 @@
 #include "Harness.h"
 #include "Tests.h"
 
-#include <cstdio>
-#include <cwchar>
+#include "hadronyche/testhost/Runner.h"
+
+#include <iterator>
 
 using namespace LoopTexturer::Tests;
 
 namespace {
-
-struct Test
-{
-    const wchar_t* name;
-    void (*function) ();
-};
 
 const Test kTests[] = {
     { L"class-ids", testClassIds },
@@ -72,58 +67,5 @@ const Test kTests[] = {
 
 int wmain (int argc, wchar_t** argv)
 {
-    if (argc >= 2 && std::wcscmp (argv[1], L"--list") == 0)
-    {
-        for (const auto& test : kTests)
-            std::wprintf (L"%ls\n", test.name);
-        std::wprintf (L"cpu\n");
-        return 0;
-    }
-
-    if (argc < 2)
-    {
-        std::printf ("Usage: LoopTexturerTests <path to the plug-in's DLL> [test name]\n");
-        return 2;
-    }
-
-    useTemporaryExportFolder ();
-
-    if (!loadPlugin (argv[1]))
-    {
-        std::wprintf (L"Could not load the plug-in: %ls\n", argv[1]);
-        removeTemporaryExportFolder ();
-        return 2;
-    }
-
-    const wchar_t* filter = argc >= 3 ? argv[2] : nullptr;
-    bool foundTest = false;
-
-    if (filter && std::wcscmp (filter, L"cpu") == 0)
-    {
-        foundTest = true;
-        measureCpu ();
-    }
-
-    for (const auto& test : kTests)
-    {
-        if (filter && std::wcscmp (filter, test.name) != 0)
-            continue;
-
-        foundTest = true;
-        std::wprintf (L"[%ls]\n", test.name);
-        std::fflush (stdout);
-        test.function ();
-    }
-
-    unloadPlugin ();
-    removeTemporaryExportFolder ();
-
-    if (!foundTest)
-    {
-        std::wprintf (L"No test named %ls. Use --list to see them.\n", filter);
-        return 2;
-    }
-
-    std::printf ("\n%d failure(s)\n", getFailureCount ());
-    return getFailureCount () == 0 ? 0 : 1;
+    return runTests (argc, argv, { "LoopTexturerTests", kTests, std::size (kTests), measureCpu, useTemporaryExportFolder, removeTemporaryExportFolder });
 }
