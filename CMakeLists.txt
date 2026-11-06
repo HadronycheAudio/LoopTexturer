@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(LoopTexturer VERSION 1.1.1 LANGUAGES CXX)
+project(LoopTexturer VERSION 1.1.2 LANGUAGES CXX)
 
 # Can point at another checkout, to work on the library and a plug-in together.
 set(HADRONYCHE_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/hadronychecore" CACHE PATH "The HadronycheCore library")
