@@ -45,4 +45,5 @@ Source: "..\build\VST3\Release\LoopTexturer.vst3\*"; DestDir: "{app}\LoopTexture
 Source: "..\LICENSE"; DestDir: "{app}\LoopTexturer.vst3\Contents\Resources\Licenses"; DestName: "LoopTexturer-LICENSE.txt"; Flags: ignoreversion
 Source: "..\external\vst3sdk\LICENSE.txt"; DestDir: "{app}\LoopTexturer.vst3\Contents\Resources\Licenses"; DestName: "VST3-SDK-LICENSE.txt"; Flags: ignoreversion
 Source: "..\external\vst3sdk\vstgui4\LICENSE"; DestDir: "{app}\LoopTexturer.vst3\Contents\Resources\Licenses"; DestName: "VSTGUI-LICENSE.txt"; Flags: ignoreversion
+Source: "..\external\hadronychecore\LICENSE"; DestDir: "{app}\LoopTexturer.vst3\Contents\Resources\Licenses"; DestName: "HadronycheCore-LICENSE.txt"; Flags: ignoreversion
 Source: "NOTICE.txt"; DestDir: "{app}\LoopTexturer.vst3\Contents\Resources\Licenses"; Flags: ignoreversion

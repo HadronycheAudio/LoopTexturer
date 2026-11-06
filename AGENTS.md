@@ -6,6 +6,8 @@ LoopTexturer is a VST® 3 insert plug-in for sound design in Cubase on Windows: 
 
 `docs/signal-path.md` is the behaviour specification. `README.md` covers building and usage.
 
+Code shared with the other Hadronyche plug-ins is in the `HadronycheCore` submodule, at `external/hadronychecore`: the parameters' curves and saved format, `PanelEditor`, `Smoother`, the test host and the build setup. Its `AGENTS.md` has its own rules.
+
 ## Commands
 
 The only supported platform is Windows x64 with Visual Studio 2022 and CMake 3.25 or newer.
@@ -75,7 +77,8 @@ People use this plug-in in real projects. Breaking these rules damages saved pro
 - **The looper reads and writes with one head at one position.** Separate heads, or any delay in the feedback path, would misalign overdubs and shift the loop on every pass.
 - **At 100% feedback, the loop must stay bit-exact.** Feedback works directly on stored cells, and `writeSpan` skips writing when nothing changes. Don't route feedback through an interpolated read.
 - **In tempo sync, the head's position is calculated from the host's musical position.** Don't accumulate it instead, or the loop will drift off the grid. This is also what makes a tempo change repitch the loop.
-- **`Smoother` must stay double precision.** In single precision it stalls about 0.01% short of its target, which makes free running loops the wrong length.
+- **The signal path is in single precision, and has to stay that way.** Use `Smoother::nextFloat` on it, and `dbToGain` from `src/dsp/FloatGain.h`. Going through double instead still compiles, and changes the sound of saved projects.
+- **`Hadronyche::Smoother` must stay double precision.** In single precision it stalls about 0.01% short of its target, which makes free running loops the wrong length.
 
 ### Decisions made by the project owner
 
@@ -95,6 +98,7 @@ In `docs/signal-path.md`, **Requirement** marks the owner's decisions and **Prop
 ### The repository
 
 - **Don't edit anything in `external/vst3sdk`.** It's a submodule pinned to `v3.8.1_build_84`. `git submodule status` shows a misleading `v3.7.3...` label for that same commit, so check with `git -C external/vst3sdk describe --tags`.
+- **Don't edit `external/hadronychecore` from here.** Change it in its own repository, and move the submodule here afterwards, once the new version has been compared with the old as its `AGENTS.md` describes.
 - Don't change git configuration. Commit or push only when asked.
 
 ## Architecture
@@ -141,10 +145,9 @@ A locate during a recording's first pass cancels it, because its length isn't se
 
 ### The editor
 
-`Editor.cpp` builds the whole panel in code, with no `.uidesc` file. A 33 ms timer in `syncControls` pushes parameter values and looper status to the controls.
+`Editor.cpp` builds the panel in `buildPanel`, on `Hadronyche::PanelEditor`, with no `.uidesc` file. A 33 ms timer in `PanelEditor` pushes parameter values to the controls, and `onSync` does the same for the looper's status.
 
-- `Binding` connects a control to a parameter, with the control's tag being its `ParamId`. Tags from 1000 upwards are buttons rather than parameters, and `valueChanged` and `controlBeginEdit` depend on that split.
-- A new `COptionMenu` needs `setCurrent (0)`, or it stays blank at a value of 0.
+- A control's tag is its `ParamId`. Tags from 1000 upwards are buttons rather than parameters, which `Editor::valueChanged` handles, and `PanelEditor` leaves anything from `kParamCount` upwards alone.
 - Dragging is an ordinary operating system file drag through `CView::doDrag`, because VST3 has no drag API. The host just sees a file being dropped on it.
 
 ## Verifying a change
@@ -197,8 +200,8 @@ CI builds the installer on every push, installs it on its own machine, runs the 
 Rules for releases:
 
 - **Don't change `AppId` in `installer/LoopTexturer.iss`.** It's how an upgrade finds the previous version.
-- **Keep `SMTG_USE_STATIC_CRT` on.** Without it, the plug-in fails to load on PCs without Microsoft's runtime, and neither the tests nor CI would notice, because that runtime is on those machines. If you configured a build before this option existed, its cached value overrides the default.
-- **The installer must keep shipping the licence files.** The VST 3 SDK's and VSTGUI's licences require their notices to accompany binaries.
+- **Keep `SMTG_USE_STATIC_CRT` on,** which HadronycheCore's `cmake/HadronychePlugin.cmake` does. Without it, the plug-in fails to load on PCs without Microsoft's runtime, and neither the tests nor CI would notice, because that runtime is on those machines. If you configured a build before this option existed, its cached value overrides the default.
+- **The installer must keep shipping the licence files.** The VST 3 SDK's, VSTGUI's and HadronycheCore's licences require their notices to accompany binaries.
 - **Follow Steinberg's usage guidelines** (`external/vst3sdk/VST3_Usage_Guidelines.pdf`) wherever "VST" appears in product-related material: use ® on first mention, include the sentence "VST is a registered trademark of Steinberg Media Technologies GmbH.", show the logo from `docs/images/` unaltered, and don't put "VST" in product or company names.
 
 ## Known limits

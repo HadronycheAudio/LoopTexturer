@@ -18,7 +18,7 @@ Get the installer from the [latest release](https://github.com/HadronycheAudio/L
 
 ## Getting the code
 
-The SDK is a pinned git submodule in `external/`:
+The SDK and HadronycheCore, the code shared by the Hadronyche plug-ins, are pinned git submodules in `external/`:
 
 ```powershell
 git -c core.longpaths=true clone --recurse-submodules <repo-url>
@@ -103,5 +103,6 @@ It's built with the following, which keep their own licences:
 
 - VST3 SDK: MIT (`external/vst3sdk/LICENSE.txt`)
 - VSTGUI (`external/vst3sdk/vstgui4/LICENSE`)
+- HadronycheCore: MIT (`external/hadronychecore/LICENSE`)
 
 VST is a registered trademark of Steinberg Media Technologies GmbH.

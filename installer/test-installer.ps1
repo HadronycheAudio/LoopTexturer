@@ -32,7 +32,7 @@ Get-ChildItem -Recurse -Force $bundle | ForEach-Object { Write-Output "  $($_.Fu
 
 Assert-That (Test-Path $binary) 'the plug-in is in the VST3 folder'
 Assert-That (Test-Path (Join-Path $bundle 'Contents\Resources\moduleinfo.json')) 'its module info is there'
-foreach ($name in 'LoopTexturer-LICENSE.txt', 'VST3-SDK-LICENSE.txt', 'VSTGUI-LICENSE.txt', 'NOTICE.txt') {
+foreach ($name in 'LoopTexturer-LICENSE.txt', 'VST3-SDK-LICENSE.txt', 'VSTGUI-LICENSE.txt', 'HadronycheCore-LICENSE.txt', 'NOTICE.txt') {
     Assert-That (Test-Path (Join-Path $licenses $name)) "$name is there"
 }
 Assert-That (Test-Path $uninstaller) 'the uninstaller is outside the VST3 folder'
