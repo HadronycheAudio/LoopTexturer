@@ -26,7 +26,7 @@ set(LOOPTEXTURER_TESTS
     free-playback free-exact-timing free-length-repitches free-each-length overdub
     feedback-unity feedback-below-unity feedback-above-unity feedback-keeps-low-end dry-wet clear rec-moves-to-overdub free-stop-play
     sync-grid sync-lengths sync-open-ended sync-64-bars sync-transport sync-tempo-repitches sync-seam sync-overdub sync-locate-cancels saved-loops
-    panel
+    panel panel-opens
 )
 
 hadronyche_add_host_tests(LoopTexturerTests LoopTexturer ${LOOPTEXTURER_TESTS})
