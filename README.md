@@ -57,7 +57,7 @@ ctest --test-dir build -C Release --output-on-failure
 > [!NOTE]
 > **The Linux version is new.** It passes the automated tests on Ubuntu 22.04 and 24.04 and Debian 12 and 13, and it has been tried briefly by hand in REAPER on Debian 13. Other hosts and distributions haven't been tried. Please [open an issue](https://github.com/HadronycheAudio/LoopTexturer/issues/new) saying which distribution and host you use if something goes wrong.
 
-- **Dragging to the timeline doesn't work on Linux.** VSTGUI can't start a drag there, so the panel says "Could not start the drag". The WAV is still written, to `LoopTexturer/Exports` in your temporary folder, usually `/tmp`, which can be cleared when you restart. A way to export loops on Linux is planned.
+- **There's no dragging to the timeline on Linux.** VSTGUI can't start a drag there, so the feature is turned off. To get the loop as audio, render the track, or route its output to another track and record it.
 
 To build it yourself, you need CMake 3.25 or newer, and the packages that this script installs on Debian or Ubuntu:
 
@@ -144,7 +144,7 @@ In both modes:
 
 - Feedback at 100% leaves the loop unchanged. Lower values fade it, and values above 100% push it into distortion. Either way, this keeps changing the loop on every pass.
 - Dry/wet at 50% plays both the live input and the loop at full level.
-- Drag the waveform to the Cubase timeline to get the loop as you hear it, as a WAV file. These files are kept in `%LOCALAPPDATA%\LoopTexturer\Exports`.
+- Drag the waveform to the Cubase timeline to get the loop as you hear it, as a WAV file. These files are kept in `%LOCALAPPDATA%\LoopTexturer\Exports`. On Linux, there's no dragging: render the track, or route its output to another track and record it.
 
 ## Project layout
 
@@ -162,6 +162,10 @@ In both modes:
 | `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
 | `tests/` | Tests that drive the built plug-in like a host |
 | `installer/` | The Windows installer, and the script that tests it. The macOS installer and the Linux tarball are built by HadronycheCore's `tools/macos/` and `tools/linux/` |
+
+## Contributing
+
+LoopTexturer is free software that follows its author's own workflow, and there's no company or support promise behind it. If you find it handy and want it to work better with your host, your distribution or your way of working, you're welcome to take it further. Please [open an issue](https://github.com/HadronycheAudio/LoopTexturer/issues/new) or a pull request. An LV2 version is on the way, and help testing in other hosts is especially useful. `AGENTS.md` lists the rules that keep people's saved projects safe, so please read it before changing anything.
 
 ## Licence
 

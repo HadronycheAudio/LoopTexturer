@@ -203,6 +203,7 @@ Memory needed for 64 bars of stereo 32-bit audio at 48 kHz in 4/4:
 **Requirement:**
 
 - Drag the looper's audio from the plug-in onto the Cubase timeline, like the Looper in Ableton Live.
+- On Linux, there's no dragging. VSTGUI can't start a drag there, and a host can render or record the output instead.
 - The WAV contains the loop as heard: at its current speed and through the post saturator, without the dry signal or Volume.
 
 VST3 has no API for this. The plug-in writes a WAV file and starts an operating system file drag, which works in Cubase. Dragging starts from the waveform.

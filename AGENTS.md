@@ -91,6 +91,7 @@ These were chosen deliberately, so don't "fix" them without the owner's agreemen
 - After its first pass, Rec moves on to overdubbing in both modes.
 - Switching looper mode clears the loop, after confirmation in the UI. The mode parameter isn't automatable, so automation can't wipe a loop.
 - The looper's buttons are VST3 messages rather than parameters.
+- There's no dragging on Linux, because VSTGUI can't start a drag there. People render or record the output instead, and the waveform only draws.
 - The dragged WAV is the loop as heard: at its current speed and through the post saturator, without the dry signal or Volume.
 - Exported WAVs are never deleted, because Cubase may keep referencing them.
 - Saturators add constant latency, because this is a sound design tool rather than a performance tool.
@@ -221,6 +222,7 @@ Rules for releases:
 - **`panel-opens` needs an X server,** so run `xvfb-run -a ctest ...` where there's no display. It opens and closes the real editor, and nothing more: `panel`, which drives it, only exists on Windows, so the panel's look and its controls need checking by eye.
 - **The release is built in an `ubuntu:22.04` container on CI, not on the runner,** because a binary only loads on a glibc as new as the one it's built against. HadronycheCore's `tools/linux/test-tarball.sh` checks this, and CI runs the tarball on other distributions too.
 - **There's no LV2 version yet.** Linux releases are VST 3 only.
+- **There's no dragging,** which is the owner's decision. `kCanDrag` in `Editor.cpp` turns it off, and `panel` doesn't exist here to test that.
 
 ## Known limits
 
@@ -229,6 +231,7 @@ Rules for releases:
 - Modes with sharp corners still alias at extreme settings: Hard clip at 14 kHz with 24 dB of drive has aliases at about -26 dB.
 - The installer isn't code-signed, so Windows warns users when they run it. The macOS one isn't signed by Apple or notarized, so macOS refuses it until the user allows it.
 - The Linux version has only been tried briefly, in REAPER on Debian 13, by the owner.
+- The test that opens the panel crashed once on CI as the test program exited, after all its checks had passed. It happened once in about 33 runs, and about 260 further runs didn't reproduce it. The cause isn't known, and it hasn't been seen in a host.
 - The Mac version hasn't been used in a real host on a real Mac. The tests measure its output, and Apple's `auval` validates it, on CI only.
 - Starting a drag on a very long loop with the post saturator on can freeze the panel for a few seconds, because the export runs on the UI thread.
 - Length automation written before version 3 plays back at different lengths, because hosts store it normalized and the range has since changed.
