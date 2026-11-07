@@ -43,6 +43,21 @@ hadronyche_add_plugin(LoopTexturer AU_TYPE aufx AU_SUBTYPE LpTx SOURCES
     src/dsp/Tape.h
 )
 
+# --- LV2 ----------------------------------------------------------------------
+# The looper's panel reaches the processor through message ports, with src/lv2/LooperLink.cpp.
+hadronyche_add_lv2(LoopTexturer SOURCES
+    src/PluginEntry.cpp
+    src/LooperBridge.cpp
+    src/LoopExport.cpp
+    src/Parameters.cpp
+    src/Processor.cpp
+    src/Controller.cpp
+    src/Editor.cpp
+    src/dsp/Looper.cpp
+LINKS
+    src/lv2/LooperLink.cpp
+)
+
 # --- Tests --------------------------------------------------------------------
 enable_testing()
 add_subdirectory(tests)

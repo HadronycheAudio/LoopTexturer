@@ -139,11 +139,25 @@ jobs:
 
       # This also runs the Steinberg validator, and a failure fails the build.
       - name: Build
-        run: cmake --build build --target LoopTexturerTests LoopTexturer
+        run: cmake --build build --target LoopTexturerTests LoopTexturer LoopTexturerLv2Compare
 
-      # Through xvfb-run, because panel-opens needs an X server.
+      # Through xvfb-run, because panel-opens needs an X server. Core dumps are on because that test has crashed twice as it
+      # finished, on CI only, and nothing else has shown where.
       - name: Test
-        run: xvfb-run -a ctest --test-dir build --output-on-failure -j 4
+        run: |
+          ulimit -c unlimited
+          sudo sysctl -w kernel.core_pattern="$PWD/core.%e.%p"
+          xvfb-run -a ctest --test-dir build --output-on-failure -j 4
+
+      - name: Show where a crash happened
+        if: failure()
+        run: |
+          sudo apt-get install -y gdb
+          for core in core.*; do
+            if [ -e "$core" ]; then
+              gdb -q -batch -ex 'thread apply all bt' build/bin/${{ matrix.config }}/LoopTexturerTests "$core"
+            fi
+          done
 
   # The download. Built on the oldest distribution it's for, because a binary needs a glibc as new as the one it's built
   # against. That distribution's own CMake is too old.

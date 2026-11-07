@@ -125,13 +125,14 @@ Understanding this is necessary before changing the looper:
 | UI | `Editor`, `WaveformView`, `exportLoop` | Reads `LooperBridge`, sends VST3 messages |
 | Host | `setState`, `getState`, `setActive` | Atomics, and handing over a `LoadedLoop` |
 | Worker (`Processor::runWorker`) | Allocates and frees tapes | `requestedSyncFrames`, `requestedFreeFrames`, `offerSyncTape`, `offerFreeTape`, `_tapeChangeMutex` |
+| LV2 messages, in the LV2 only | The wrapper's message thread: the buttons' messages to `Processor::notify`, and `src/lv2/LooperLink.cpp`'s copies for the panel | Reads `LooperBridge` as the UI does, and lock-free queues to the audio thread |
 
 How the pieces connect:
 
 - **Parameters:** the host sends changes through `process`, and they land in `Processor::_params` as atomics. The last value per block is used, followed by smoothing. `getParamSpec` is the one definition of every parameter's range and text, shared by `Processor`, `Controller` and `Editor`.
 - **Buttons:** `Editor` → `Controller::sendLooperCommand` → VST3 message → `Processor::notify` → `Looper::sendCommand`, an atomic bitmask read at the start of the next block.
 - **Status and audio for the UI:** `LooperBridge` holds status atomics written once per block, and the tapes. `Tape` stores samples as relaxed atomics so that the UI can read while the audio thread writes without a data race.
-- **Finding the bridge:** the processor sends only the bridge's ID in a message, and the controller looks it up in a registry of weak pointers. This avoids dangling pointers, whatever order the host destroys things in. It relies on the plug-in not being distributable (the `0` flag in `src/PluginEntry.cpp`), so that both sides share one process.
+- **Finding the bridge:** the processor sends only the bridge's ID in a message, and the controller looks it up in a registry of weak pointers. This avoids dangling pointers, whatever order the host destroys things in. It relies on the plug-in not being distributable (the `0` flag in `src/PluginEntry.cpp`), so that both sides share one process. The LV2 can't rely on that, so its panel gets a copy instead, as [Linux](#linux) describes.
 - **Tape lifetime:** `LooperBridge` owns tapes through `shared_ptr`, and the audio thread holds plain pointers. The worker releases only tapes outside `Looper::getTapesInUse`. Hold `_tapeChangeMutex` while adding a tape until the looper knows about it, or the worker could release it.
 - **Restoring a loop:** `setState` writes parameters first and then hands over the `LoadedLoop`. If the order were reversed, the audio thread could see the old mode, treat it as a mode switch and clear the new loop.
 
@@ -173,6 +174,7 @@ Before calling a change done:
 | `ChainTests.cpp` | Latency, levels, pan, LFOs, filter, saturators and aliasing |
 | `LooperTests.cpp` | Both looper modes, feedback, dry/wet and saved loops |
 | `PanelTest.cpp` | The real editor, driven with mouse messages, including the drag export |
+| `lv2/LooperLv2Test.cpp` | On Linux, the LV2 and its panel, with the messages between them carried as a host does |
 
 - **Never change an expected value in `CompatibilityTests.cpp` to make a test pass.** Those values are written out by hand on purpose, and a failure there means the change would damage saved projects. Adding new parameters to them is fine, and expected.
 - **Don't loosen a limit elsewhere to get a test passing** without working out why it failed. Several of these numbers come from real bugs.
@@ -221,7 +223,10 @@ Rules for releases:
 - **`external/hadronychecore/tools/linux/install-build-packages.sh` installs the build's packages.** gtkmm and SQLite are only needed to configure, and the plug-in doesn't link them.
 - **`panel-opens` needs an X server,** so run `xvfb-run -a ctest ...` where there's no display. It opens and closes the real editor, and nothing more: `panel`, which drives it, only exists on Windows, so the panel's look and its controls need checking by eye.
 - **The release is built in an `ubuntu:22.04` container on CI, not on the runner,** because a binary only loads on a glibc as new as the one it's built against. HadronycheCore's `tools/linux/test-tarball.sh` checks this, and CI runs the tarball on other distributions too.
-- **There's no LV2 version yet.** Linux releases are VST 3 only.
+- **The LV2 is HadronycheCore's wrapper around the VST3's own classes, and hasn't been released.** Its `AGENTS.md` has the rules. It has audio, control ports, state with the loop, latency, transport and the VST3's panel. The URI, the panel's URI, the symbols in `src/lv2/PluginInfo.cpp` and the ports `ui_in` and `ui_out` become permanent at its first release, and `lv2-matches-vst3` compares it with the VST3, bit for bit.
+- **The LV2's panel never shares memory with its processor,** because a host can run it in another process. `src/lv2/LooperLink.cpp`, which only the LV2 builds, keeps the processor's bridge ID on the audio side, and sends the panel copies of `LooperBridge`'s status and of the tape's overview buckets instead, about 30 times a second and only the parts that changed. The panel side builds a `LooperBridge` of its own from them and introduces it with the processor's own message, so `Controller` and `Editor` are unchanged. The buttons' messages go back unchanged. Keep it that way: what the LV2 needs differently goes in `src/lv2/`, around the VST3 classes, not in them.
+- **The copied waveform uses the tape's own overview buckets,** so it matches the VST3's, except that a column's edge can fall one bucket differently, which moves a few columns by a few pixels. A coarser copy showed visibly different peaks.
+- **`lv2-looper` runs the LV2 and its panel as a host does,** carrying the messages itself, and clicks the real buttons. It checks the sound, what the panel draws, a panel opened later, a restored loop, damaged messages both ways, a host that doesn't pass messages back, and one without a URID map. `tests/lv2/LooperLv2Test.cpp` uses the same positions as `PanelTest.cpp`. Set `LOOPTEXTURER_SCREENSHOTS` to a folder to save the panel as PPM files.
 - **There's no dragging,** which is the owner's decision. `kCanDrag` in `Editor.cpp` turns it off, and `panel` doesn't exist here to test that.
 
 ## Known limits
