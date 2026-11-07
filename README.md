@@ -163,7 +163,7 @@ In both modes:
 | `src/Messages.h` | VST3 message names between the processor and the controller |
 | `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
 | `tests/` | Tests that drive the built plug-in like a host |
-| `installer/` | The Windows installer, and the script that tests it. The macOS installer and the Linux tarball are built by HadronycheCore's `tools/macos/` and `tools/linux/` |
+| `installer/` | The Windows installer. HadronycheCore's `tools/windows/` tests it, and its `tools/macos/` and `tools/linux/` build the macOS installer and the Linux tarballs |
 
 ## Contributing
 

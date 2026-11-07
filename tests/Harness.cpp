@@ -10,12 +10,6 @@ using namespace Steinberg;
 namespace LoopTexturer {
 namespace Tests {
 
-namespace {
-
-constexpr double kPi = 3.14159265358979;
-
-} // namespace
-
 void Plug::pressButton (int command)
 {
     sendToProcessor (kMessageLooperCommand, kAttributeCommand, command);
@@ -166,7 +160,7 @@ Samples sine (double hz, double amplitude, double seconds, double sampleRate)
 {
     Samples samples (static_cast<size_t> (seconds * sampleRate));
     for (size_t i = 0; i < samples.size (); ++i)
-        samples[i] = static_cast<float> (amplitude * std::sin (2.0 * kPi * hz * static_cast<double> (i) / sampleRate));
+        samples[i] = static_cast<float> (amplitude * std::sin (2.0 * Detail::kPi * hz * static_cast<double> (i) / sampleRate));
     return samples;
 }
 

@@ -9,8 +9,6 @@
 
 #include "hadronyche/testhost/Panel.h"
 
-#include "pluginterfaces/gui/iplugview.h"
-
 #include <windows.h>
 
 #include <algorithm>
@@ -111,23 +109,9 @@ std::vector<fs::path> listExports ()
 class Panel
 {
 public:
-    explicit Panel (Plug& plug) : _plug (plug), _mainThread (GetCurrentThreadId ())
+    explicit Panel (Plug& plug) : _plug (plug), _window (plug.controller, L"LoopTexturerPanelTest"), _mainThread (GetCurrentThreadId ())
     {
-        _view = plug.controller->createView (Vst::ViewType::kEditor);
-        _view->getSize (&_size);
-
-        WNDCLASSW windowClass {};
-        windowClass.lpfnWndProc = DefWindowProcW;
-        windowClass.hInstance = GetModuleHandleW (nullptr);
-        windowClass.lpszClassName = L"LoopTexturerPanelTest";
-        RegisterClassW (&windowClass);
-
-        _window = CreateWindowExW (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, windowClass.lpszClassName, L"", WS_POPUP, -4000, -4000,
-                                   _size.getWidth (), _size.getHeight (), nullptr, nullptr, windowClass.hInstance, nullptr);
-        ShowWindow (_window, SW_SHOWNOACTIVATE);
-
-        isOpen = _view->attached (_window, kPlatformTypeHWND) == kResultOk;
-        _editorWindow = FindWindowExW (_window, nullptr, nullptr, nullptr);
+        isOpen = _window.open ();
 
         // DoDragDrop only re-checks the mouse when input arrives, so a drag needs some.
         _mouseInput = std::thread ([this] {
@@ -143,26 +127,15 @@ public:
     {
         _stopMouseInput = true;
         _mouseInput.join ();
-
-        _view->removed ();
-        _view->release ();
-        pump ();
-        DestroyWindow (_window);
     }
 
-    void click (int x, int y)
-    {
-        SendMessageW (_editorWindow, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (x, y));
-        pump ();
-        SendMessageW (_editorWindow, WM_LBUTTONUP, 0, MAKELPARAM (x, y));
-        pump ();
-    }
+    void click (int x, int y) { _window.click (x, y); }
 
     void drag ()
     {
-        SendMessageW (_editorWindow, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (kWaveformX, kWaveformY));
+        SendMessageW (_window.editorWindow, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (kWaveformX, kWaveformY));
         pump ();
-        SendMessageW (_editorWindow, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM (kWaveformX + 40, kWaveformY + 30));
+        SendMessageW (_window.editorWindow, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM (kWaveformX + 40, kWaveformY + 30));
         pump ();
     }
 
@@ -189,10 +162,7 @@ public:
         return output;
     }
 
-    void saveScreenshot (const char* name)
-    {
-        Hadronyche::TestHost::saveScreenshot (_window, _size.getWidth (), _size.getHeight (), "LOOPTEXTURER_SCREENSHOTS", name);
-    }
+    void saveScreenshot (const char* name) { _window.saveScreenshot ("LOOPTEXTURER_SCREENSHOTS", name); }
 
     static void pump () { Hadronyche::TestHost::pump (); }
 
@@ -200,10 +170,7 @@ public:
 
 private:
     Plug& _plug;
-    IPlugView* _view { nullptr };
-    ViewRect _size;
-    HWND _window { nullptr };
-    HWND _editorWindow { nullptr };
+    PanelWindow _window;
     DWORD _mainThread;
     std::thread _mouseInput;
     std::atomic<bool> _stopMouseInput { false };

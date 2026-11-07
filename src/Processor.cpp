@@ -4,16 +4,13 @@
 #include "Messages.h"
 #include "dsp/FloatGain.h"
 
-#include "hadronyche/dsp/Denormals.h"
 #include "hadronyche/dsp/Gain.h"
 
-#include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstring>
 
 using namespace Steinberg;
 
@@ -100,20 +97,19 @@ void buildOverview (Tape& tape, int64_t frames)
 
 } // namespace
 
-Processor::Processor () : _params (getParamSpec), _bridge (LooperBridge::create ()), _looper (*_bridge, Saturator::kLatency)
+Processor::Processor ()
+: StereoProcessor (Controller::getClassFUID (), true, getParamSpec,
+                   [] (IBStream* state, const Hadronyche::ParamValueSink& onValue) { return readParamState (state, onValue); }, writeParamState),
+  _bridge (LooperBridge::create ()), _looper (*_bridge, Saturator::kLatency)
 {
-    setControllerClass (Controller::getClassFUID ());
     processContextRequirements.needTransportState ().needProjectTimeMusic ().needBarPositionMusic ().needTempo ().needTimeSignature ();
 }
 
 tresult PLUGIN_API Processor::initialize (FUnknown* context)
 {
-    const tresult result = AudioEffect::initialize (context);
+    const tresult result = StereoProcessor::initialize (context);
     if (result != kResultOk)
         return result;
-
-    addAudioInput (STR16 ("Stereo In"), Vst::SpeakerArr::kStereo);
-    addAudioOutput (STR16 ("Stereo Out"), Vst::SpeakerArr::kStereo);
 
     _stopWorker = false;
     _worker = std::thread ([this] { runWorker (); });
@@ -197,28 +193,6 @@ tresult PLUGIN_API Processor::notify (Vst::IMessage* message)
         return kResultOk;
     }
     return AudioEffect::notify (message);
-}
-
-tresult PLUGIN_API Processor::setActive (TBool state)
-{
-    if (state)
-        prepareDsp ();
-
-    return AudioEffect::setActive (state);
-}
-
-tresult PLUGIN_API Processor::setBusArrangements (Vst::SpeakerArrangement* inputs, int32 numIns,
-                                                  Vst::SpeakerArrangement* outputs, int32 numOuts)
-{
-    if (numIns == 1 && numOuts == 1 && inputs[0] == Vst::SpeakerArr::kStereo && outputs[0] == Vst::SpeakerArr::kStereo)
-        return AudioEffect::setBusArrangements (inputs, numIns, outputs, numOuts);
-
-    return kResultFalse;
-}
-
-tresult PLUGIN_API Processor::canProcessSampleSize (int32 symbolicSampleSize)
-{
-    return symbolicSampleSize == Vst::kSample32 ? kResultTrue : kResultFalse;
 }
 
 uint32 PLUGIN_API Processor::getLatencySamples ()
@@ -325,22 +299,8 @@ void Processor::prepareDsp ()
     applyParameters ();
 }
 
-tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
+void Processor::renderBlock (Vst::ProcessData& data, Vst::AudioBusBuffers& output)
 {
-    _params.readChanges (data.inputParameterChanges);
-
-    if (data.numOutputs == 0 || data.numSamples == 0)
-        return kResultOk;
-
-    auto& output = data.outputs[0];
-    if (output.numChannels != 2)
-    {
-        for (int32 c = 0; c < output.numChannels; ++c)
-            std::memset (output.channelBuffers32[c], 0, sizeof (float) * static_cast<size_t> (data.numSamples));
-        return kResultOk;
-    }
-
-    const Hadronyche::FlushDenormals flushDenormals;
     applyParameters ();
     _looper.beginBlock (getLooperSettings (), getTransport (data.processContext));
 
@@ -410,7 +370,6 @@ tresult PLUGIN_API Processor::process (Vst::ProcessData& data)
     _looper.endBlock ();
 
     output.silenceFlags = 0;
-    return kResultOk;
 }
 
 bool Processor::writeLoopState (IBStream* state)
@@ -527,11 +486,7 @@ void Processor::readLoopState (IBStream* state)
 
 tresult PLUGIN_API Processor::setState (IBStream* state)
 {
-    if (!state)
-        return kResultFalse;
-
-    int version = 0;
-    if (!readParamState (state, [this] (Vst::ParamID id, double value) { _params[id] = value; }, &version))
+    if (!state || !restoreParams (state))
         return kResultFalse;
 
     // Older states have no looper section, which reads as having no loop.
@@ -541,10 +496,7 @@ tresult PLUGIN_API Processor::setState (IBStream* state)
 
 tresult PLUGIN_API Processor::getState (IBStream* state)
 {
-    if (!state)
-        return kResultFalse;
-
-    if (!writeParamState (state, _params.snapshot ()))
+    if (!state || !saveParams (state))
         return kResultFalse;
 
     return writeLoopState (state) ? kResultOk : kResultFalse;
