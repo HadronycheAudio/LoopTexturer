@@ -7,7 +7,6 @@
 #include "Tests.h"
 
 #include "pluginterfaces/base/funknown.h"
-#include "pluginterfaces/base/ustring.h"
 #include "public.sdk/source/common/memorystream.h"
 
 #include <cmath>
@@ -43,25 +42,11 @@ void append (std::vector<char>& out, T value)
     appendBytes (out, &value, sizeof (value));
 }
 
-template <typename T>
-T readAt (const std::vector<char>& bytes, size_t offset)
-{
-    T value {};
-    std::memcpy (&value, bytes.data () + offset, sizeof (value));
-    return value;
-}
-
 std::string getLabel (Plug& plug, ParamId id, int index)
 {
     Vst::ParameterInfo info {};
     plug.controller->getParameterInfo (id, info);
-
-    Vst::String128 text {};
-    plug.controller->getParamStringByValue (id, static_cast<double> (index) / info.stepCount, text);
-
-    char ascii[128] {};
-    UString (text, str16BufferSize (Vst::String128)).toAscii (ascii, sizeof (ascii));
-    return ascii;
+    return paramText (plug.controller, id, static_cast<double> (index) / info.stepCount);
 }
 
 } // namespace

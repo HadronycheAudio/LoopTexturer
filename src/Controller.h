@@ -2,7 +2,7 @@
 
 #include "PluginConfig.h"
 
-#include "public.sdk/source/vst/vsteditcontroller.h"
+#include "hadronyche/vst/SpecController.h"
 
 #include <memory>
 
@@ -10,19 +10,19 @@ namespace LoopTexturer {
 
 class LooperBridge;
 
-// The VST3 edit controller: registers the parameters and creates the editor.
-class Controller : public Steinberg::Vst::EditController
+// The VST3 edit controller: its parameters and state come from Parameters.h, it creates the editor, and it carries
+// the looper's messages between the panel and the processor.
+class Controller : public Hadronyche::SpecController
 {
 public:
+    Controller ();
+
     static const Steinberg::FUID getClassFUID () { return Steinberg::FUID (LOOPTEXTURER_CONTROLLER_UID); }
     static Steinberg::FUnknown* createInstance (void*)
     {
         return static_cast<Steinberg::Vst::IEditController*> (new Controller);
     }
 
-    Steinberg::tresult PLUGIN_API initialize (Steinberg::FUnknown* context) SMTG_OVERRIDE;
-    Steinberg::tresult PLUGIN_API setComponentState (Steinberg::IBStream* state) SMTG_OVERRIDE;
-    Steinberg::IPlugView* PLUGIN_API createView (Steinberg::FIDString name) SMTG_OVERRIDE;
     Steinberg::tresult PLUGIN_API notify (Steinberg::Vst::IMessage* message) SMTG_OVERRIDE;
 
     // Null until the processor has introduced itself.
@@ -31,6 +31,8 @@ public:
     void sendLooperCommand (int command);
 
 private:
+    Steinberg::IPlugView* createEditor () override;
+
     std::shared_ptr<LooperBridge> _looperBridge;
 };
 

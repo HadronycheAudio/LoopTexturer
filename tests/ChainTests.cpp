@@ -470,12 +470,9 @@ void testParameterText ()
     for (const auto& [id, plain] : cases)
     {
         const double normalized = plug.controller->plainParamToNormalized (id, plain);
-        Vst::String128 text {};
-        plug.controller->getParamStringByValue (id, normalized, text);
-
         double parsed = -1.0;
-        const auto result = plug.controller->getParamValueByString (id, text, parsed);
-        check ("the value's text reads back as the same value", result == kResultOk && std::abs (parsed - normalized) < 0.002);
+        const bool understood = paramFromText (plug.controller, id, paramText (plug.controller, id, normalized).c_str (), parsed);
+        check ("the value's text reads back as the same value", understood && std::abs (parsed - normalized) < 0.002);
     }
 }
 

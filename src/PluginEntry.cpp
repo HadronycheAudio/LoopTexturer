@@ -4,28 +4,7 @@
 #include "PluginConfig.h"
 #include "Processor.h"
 
-#include "public.sdk/source/main/pluginfactory.h"
+#include "hadronyche/vst/PluginFactory.h"
 
-BEGIN_FACTORY_DEF (LOOPTEXTURER_VENDOR, LOOPTEXTURER_URL, LOOPTEXTURER_EMAIL)
-
-    DEF_CLASS2 (INLINE_UID_FROM_FUID (LoopTexturer::Processor::getClassFUID ()),
-                PClassInfo::kManyInstances,
-                kVstAudioEffectClass,
-                LOOPTEXTURER_NAME,
-                0, // Not distributable: the processor and the UI share the looper's memory.
-                Vst::PlugType::kFx,
-                LOOPTEXTURER_VERSION,
-                kVstVersionString,
-                LoopTexturer::Processor::createInstance)
-
-    DEF_CLASS2 (INLINE_UID_FROM_FUID (LoopTexturer::Controller::getClassFUID ()),
-                PClassInfo::kManyInstances,
-                kVstComponentControllerClass,
-                LOOPTEXTURER_NAME,
-                0,
-                "",
-                LOOPTEXTURER_VERSION,
-                kVstVersionString,
-                LoopTexturer::Controller::createInstance)
-
-END_FACTORY
+// Not distributable: the processor and the UI share the looper's memory.
+HADRONYCHE_PLUGIN_FACTORY (LoopTexturer, LOOPTEXTURER, Vst::PlugType::kFx, 0)

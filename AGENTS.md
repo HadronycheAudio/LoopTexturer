@@ -6,7 +6,7 @@ LoopTexturer is a VST® 3 insert plug-in for sound design in Cubase on Windows: 
 
 `docs/signal-path.md` is the behaviour specification. `README.md` covers building and usage.
 
-Code shared with the other Hadronyche plug-ins is in the `HadronycheCore` submodule, at `external/hadronychecore`: the parameters' curves and saved format, `PanelEditor`, `Smoother`, the test host and the build setup. Its `AGENTS.md` has its own rules.
+Code shared with the other Hadronyche plug-ins is in the `HadronycheCore` submodule, at `external/hadronychecore`: the parameters' curves and saved format, the processor and controller base classes, the module entry, `PanelEditor`, `Smoother`, the test host, the build setup and CI. Its `AGENTS.md` has its own rules.
 
 ## Commands
 
@@ -164,7 +164,7 @@ Before calling a change done:
 
 ### The tests
 
-`.github/workflows/ci.yml` builds Debug and Release and runs all of this on every push and pull request. Don't weaken or skip it to get a change through.
+`.github/workflows/ci.yml` builds Debug and Release and runs all of this on every push and pull request, through HadronycheCore's `plugin-ci.yml`, whose commit it pins. Don't weaken or skip it to get a change through. When the submodule moves, move the commit in `ci.yml` with it.
 
 `tests/` builds one program, `LoopTexturerTests`, which loads the built plug-in and drives it through the VST3 interfaces, the way Cubase does. It doesn't link the plug-in's code, so tests can only see what a host can.
 
@@ -200,7 +200,7 @@ Pushing a tag `v<version>` publishes a release, once everything has passed:
 3. Commit, push, and wait for CI to pass.
 4. Tag that commit and push the tag.
 
-CI builds the installer on every push, installs it on its own machine, runs the validator and all the tests on the installed copy, and uninstalls it. `installer/test-installer.ps1` writes to Program Files, so don't run it on a machine you care about.
+CI builds the installer on every push, installs it on its own machine, runs the validator and all the tests on the installed copy, and uninstalls it. HadronycheCore's `tools/windows/test-installer.ps1` writes to Program Files, so don't run it on a machine you care about.
 
 Rules for releases:
 
