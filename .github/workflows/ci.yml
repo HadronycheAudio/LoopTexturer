@@ -188,13 +188,19 @@ jobs:
 
       # This also runs the Steinberg validator, and a failure fails the build.
       - name: Build
-        run: cmake --build build --target LoopTexturerTests LoopTexturer
+        run: cmake --build build --target LoopTexturerTests LoopTexturer LoopTexturerLv2Compare
 
       - name: Build the tarball
         run: bash external/hadronychecore/tools/linux/make-tarball.sh LoopTexturer "$(sed -n 's/^project(LoopTexturer VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)" build/installer
 
       - name: Test the tarball
-        run: xvfb-run -a bash external/hadronychecore/tools/linux/test-tarball.sh LoopTexturer build/installer/*.tar.gz build/bin/Release/validator build/bin/Release/LoopTexturerTests 2.35
+        run: xvfb-run -a bash external/hadronychecore/tools/linux/test-tarball.sh LoopTexturer build/installer/*-x86_64.tar.gz build/bin/Release/validator build/bin/Release/LoopTexturerTests 2.35
+
+      - name: Build the LV2 tarball
+        run: bash external/hadronychecore/tools/linux/make-lv2-tarball.sh LoopTexturer "$(sed -n 's/^project(LoopTexturer VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)" build/installer
+
+      - name: Test the LV2 tarball
+        run: bash external/hadronychecore/tools/linux/test-lv2-tarball.sh LoopTexturer build/installer/*-LV2.tar.gz build/installer/*-x86_64.tar.gz build/bin/Release/LoopTexturerLv2Compare 2.35
 
       - name: Keep the tarball
         uses: actions/upload-artifact@v7
@@ -211,7 +217,9 @@ jobs:
           path: |
             build/bin/Release/validator
             build/bin/Release/LoopTexturerTests
+            build/bin/Release/LoopTexturerLv2Compare
             external/hadronychecore/tools/linux/test-tarball.sh
+            external/hadronychecore/tools/linux/test-lv2-tarball.sh
           if-no-files-found: error
           retention-days: 1
 
@@ -248,7 +256,8 @@ jobs:
       - name: Test the tarball
         run: |
           chmod +x tools/build/bin/Release/*
-          xvfb-run -a bash tools/external/hadronychecore/tools/linux/test-tarball.sh LoopTexturer installer/*.tar.gz tools/build/bin/Release/validator tools/build/bin/Release/LoopTexturerTests 2.35
+          xvfb-run -a bash tools/external/hadronychecore/tools/linux/test-tarball.sh LoopTexturer installer/*-x86_64.tar.gz tools/build/bin/Release/validator tools/build/bin/Release/LoopTexturerTests 2.35
+          bash tools/external/hadronychecore/tools/linux/test-lv2-tarball.sh LoopTexturer installer/*-LV2.tar.gz installer/*-x86_64.tar.gz tools/build/bin/Release/LoopTexturerLv2Compare 2.35
 
   # Runs for a version tag, once every build and installer has passed.
   release:

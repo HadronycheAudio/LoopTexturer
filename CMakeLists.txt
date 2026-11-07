@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 # The oldest macOS it runs on. This has to come before project (), or it defaults to the build machine's own.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "The oldest macOS supported")
 
-project(LoopTexturer VERSION 1.3.0 LANGUAGES CXX)
+project(LoopTexturer VERSION 1.4.0 LANGUAGES CXX)
 
 # Can point at another checkout, to work on the library and a plug-in together.
 set(HADRONYCHE_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/hadronychecore" CACHE PATH "The HadronycheCore library")
