@@ -30,3 +30,16 @@ set(LOOPTEXTURER_TESTS
 )
 
 hadronyche_add_host_tests(LoopTexturerTests LoopTexturer ${LOOPTEXTURER_TESTS})
+
+hadronyche_add_lv2_tests(LoopTexturer)
+
+# The LV2's looper through its panel, with the messages carried as a host carries them. Linux only, like the LV2.
+if(LINUX)
+    add_executable(LoopTexturerLv2Looper lv2/LooperLv2Test.cpp)
+    target_link_libraries(LoopTexturerLv2Looper PRIVATE xcb ${CMAKE_DL_LIBS})
+    add_dependencies(LoopTexturerLv2Looper LoopTexturer-lv2)
+    add_dependencies(LoopTexturerLv2Compare LoopTexturerLv2Looper)
+    add_test(NAME lv2-looper COMMAND xvfb-run -a -s "-screen 0 2000x600x24"
+        "$<TARGET_FILE:LoopTexturerLv2Looper>" "${CMAKE_BINARY_DIR}/LV2/LoopTexturer.lv2")
+    set_tests_properties(lv2-looper PROPERTIES TIMEOUT 300)
+endif()
