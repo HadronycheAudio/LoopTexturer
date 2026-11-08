@@ -1,9 +1,10 @@
 // What the LV2 wrapper and its Turtle need to know about this plug-in. The URI and the symbols are saved in hosts'
 // projects, so never change them, and a new parameter adds a symbol at the end.
 
-#include "Parameters.h"
+#include "ParamIds.h"
 
 #include "hadronyche/lv2/PluginInfo.h"
+#include "hadronyche/vst/RustPlugin.h"
 
 namespace {
 
@@ -46,7 +47,7 @@ const Hadronyche::Lv2::PluginInfo& Hadronyche::Lv2::getPluginInfo ()
         "https://github.com/HadronycheAudio/LoopTexturer",
         "LoopTexturer",
         "DelayPlugin",
-        LoopTexturer::getParamSpec,
+        Hadronyche::RustPlugin::getSpec,
         LoopTexturer::kParamCount,
         kSymbols,
         2, // LV2 treats an odd minor version as a development build.

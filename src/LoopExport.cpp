@@ -1,8 +1,5 @@
 #include "LoopExport.h"
 
-#include "dsp/Saturator.h"
-#include "dsp/FloatGain.h"
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -19,8 +16,6 @@ namespace fs = std::filesystem;
 namespace LoopTexturer {
 
 namespace {
-
-constexpr int kPreRollFrames = 4096;
 
 // A permanent location, because the DAW may keep referencing the file after the drop.
 fs::path getExportFolder ()
@@ -113,69 +108,14 @@ bool writeWav (const fs::path& path, const std::vector<float>& interleaved, doub
 
 std::string exportLoop (const LooperBridge& bridge, const LoopExportSettings& settings)
 {
-    const auto& status = bridge.status;
-    const auto tape = bridge.getActiveTape ();
-    const int64_t loopFrames = status.loopFrames.load ();
-    const double sampleRate = status.sampleRate.load ();
-    if (!tape || loopFrames <= 0 || sampleRate <= 0.0 || !status.hasContent.load ())
+    const double sampleRate = bridge.getStatus ().sampleRate;
+    const int64_t outputFrames = Ffi::looptexturer_render_frames (bridge.raw (), &settings);
+    if (outputFrames <= 0 || sampleRate <= 0.0)
         return {};
-
-    // The number of frames the loop takes to play at its current speed.
-    int64_t outputFrames = loopFrames;
-    if (status.isSyncMode.load ())
-    {
-        const double tempo = status.tempo.load ();
-        if (tempo > 0.0)
-            outputFrames = std::llround (status.loopQuarters.load () * 60.0 / tempo * sampleRate);
-    }
-    else
-    {
-        outputFrames = std::llround (settings.freeLengthSeconds * sampleRate);
-    }
-    if (outputFrames <= 0)
-        return {};
-
-    const double speed = static_cast<double> (loopFrames) / static_cast<double> (outputFrames);
-    const double width = std::max (0.0, speed - status.writeSpeed.load ());
-
-    const auto readFrame = [&] (int64_t frame, float& left, float& right) {
-        const int64_t wrapped = ((frame % outputFrames) + outputFrames) % outputFrames;
-        const double head = static_cast<double> (wrapped) * speed;
-        left = tape->read (0, head, loopFrames, width);
-        right = tape->read (1, head, loopFrames, width);
-    };
 
     std::vector<float> interleaved (static_cast<size_t> (outputFrames) * 2);
-
-    if (settings.postSaturatorOn)
-    {
-        Saturator saturator;
-        saturator.prepare (sampleRate, dbToGain (settings.postSaturatorDriveDb), static_cast<float> (settings.postSaturatorMix));
-        saturator.setMode (static_cast<Saturator::Mode> (settings.postSaturatorMode));
-
-        // Starting a little before the loop lets the saturator's filters settle on what plays just
-        // before the loop's start, so that the file loops seamlessly. Its latency is skipped too.
-        const int64_t preRoll = std::min<int64_t> (kPreRollFrames, outputFrames);
-        const int64_t skipped = preRoll + Saturator::kLatency;
-        const int64_t total = skipped + outputFrames;
-        for (int64_t i = 0; i < total; ++i)
-        {
-            float left = 0.0f;
-            float right = 0.0f;
-            readFrame (i - preRoll, left, right);
-            saturator.process (left, right);
-            if (i >= skipped)
-            {
-                interleaved[static_cast<size_t> (i - skipped) * 2] = left;
-                interleaved[static_cast<size_t> (i - skipped) * 2 + 1] = right;
-            }
-        }
-    }
-    else
-    {
-        for (int64_t i = 0; i < outputFrames; ++i)
-            readFrame (i, interleaved[static_cast<size_t> (i) * 2], interleaved[static_cast<size_t> (i) * 2 + 1]);
-    }
+    if (!Ffi::looptexturer_render (bridge.raw (), &settings, interleaved.data (), outputFrames))
+        return {};
 
     const auto folder = getExportFolder ();
     std::error_code error;

@@ -124,13 +124,13 @@ void useSyncMode (Plug& plug)
     {
         song.locate (0.0);
         song.play (true);
-        plug.pressButton (Looper::kCommandRec);
+        plug.pressButton (kCommandRec);
         plug.runMono (in, out);
         isReady = findClicks (out).size () >= 1;
 
         song.play (false);
-        plug.pressButton (Looper::kCommandStop);
-        plug.pressButton (Looper::kCommandClear);
+        plug.pressButton (kCommandStop);
+        plug.pressButton (kCommandClear);
         plug.settle (0.01);
 
         if (!isReady)
@@ -147,12 +147,12 @@ void recordFree (Plug& plug, double hz, double amplitude, double lengthSeconds)
 {
     plug.set (kLooperFreeLength, lengthSeconds);
     plug.settle (0.8);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
 
     Samples out;
     plug.runMono (sine (hz, amplitude, lengthSeconds), out);
     plug.runMono (silence (0.1), out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.settle (0.05);
 }
 

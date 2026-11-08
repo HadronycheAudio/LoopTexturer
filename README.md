@@ -34,7 +34,7 @@ There's also an LV2 version, in `LoopTexturer-<version>-Linux-x86_64-LV2.tar.gz`
 
 **Are you a Mac user who's ready to commit to testing? You're more than welcome!** Please [open an issue](https://github.com/HadronycheAudio/LoopTexturer/issues/new) saying which Mac, macOS version and host you use.
 
-To build it yourself, you need Xcode, CMake 3.25 or newer, and an internet connection the first time, which fetches Apple's AudioUnitSDK:
+To build it yourself, you need Xcode, CMake 3.25 or newer, [Rust](https://rustup.rs) with both Mac targets (`rustup target add aarch64-apple-darwin x86_64-apple-darwin`), and an internet connection the first time, which fetches Apple's AudioUnitSDK:
 
 ```bash
 git clone --recurse-submodules https://github.com/HadronycheAudio/LoopTexturer.git
@@ -59,7 +59,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 - **There's no dragging to the timeline on Linux.** VSTGUI can't start a drag there, so the feature is turned off. To get the loop as audio, render the track, or route its output to another track and record it.
 
-To build it yourself, you need CMake 3.25 or newer, and the packages that this script installs on Debian or Ubuntu:
+To build it yourself, you need CMake 3.25 or newer, [Rust](https://rustup.rs), and the packages that this script installs on Debian or Ubuntu:
 
 ```bash
 git clone --recurse-submodules https://github.com/HadronycheAudio/LoopTexturer.git
@@ -84,6 +84,7 @@ xvfb-run -a ctest --test-dir build/Release --output-on-failure
 
 - Visual Studio 2022 with the "Desktop development with C++" workload
 - CMake 3.25 or newer
+- [Rust](https://rustup.rs), which builds the signal chain and the looper in `rust/` into the plug-in
 - Git
 
 ## Getting the code
@@ -154,14 +155,18 @@ In both modes:
 | --- | --- |
 | `src/PluginConfig.h` | Plug-in name, vendor details and class IDs |
 | `src/PluginEntry.cpp` | VST3 module entry, registers the classes below |
-| `src/Parameters.*` | Parameter IDs, ranges and text, plus saving and loading their values |
-| `src/Processor.*` | Runs the signal chain, and saves and restores the loop |
+| `rust/src/lib.rs` | The parameters, with their IDs, ranges and text, the processor that runs the signal chain, and saving and restoring the loop |
+| `rust/src/looper.rs` | The looper, a tape with one head, in both modes |
+| `rust/src/bridge.rs` | What the processor shares with the UI and its worker thread: the looper's status, tapes and mailbox |
+| `rust/src/ffi.rs` | The C functions the UI reads the looper through, which `src/LooperApi.h` is generated from |
+| `rust/src/` | Also the tape, LFO, filter, and saturator with its oversampler |
+| `src/ParamIds.h`, `src/LooperIds.h` | The parameter IDs, the looper's commands and bars list for the C++ side, generated from `rust/` |
+| `src/Processor.*` | The VST3 audio component, which HadronycheCore's `RustProcessor` runs on the Rust side, and its messages |
 | `src/Controller.*` | Registers the parameters and creates the editor |
 | `src/Editor.*` | The single-panel plug-in window, including the waveform and drag |
-| `src/LooperBridge.*` | What the processor and the UI share: the looper's status and audio |
-| `src/LoopExport.*` | Writes the loop as heard to a WAV file |
+| `src/LooperBridge.h` | The UI's view of the looper's status and tapes, over `src/LooperApi.h` |
+| `src/LoopExport.*` | Writes the loop as heard, which the Rust side renders, to a WAV file |
 | `src/Messages.h` | VST3 message names between the processor and the controller |
-| `src/dsp/` | LFO, filter, saturator, oversampler, looper and parameter smoothing |
 | `tests/` | Tests that drive the built plug-in like a host |
 | `installer/` | The Windows installer. HadronycheCore's `tools/windows/` tests it, and its `tools/macos/` and `tools/linux/` build the macOS installer and the Linux tarballs |
 

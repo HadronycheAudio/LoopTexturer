@@ -2,8 +2,10 @@
 
 // The test host from HadronycheCore, and what this plug-in's tests add to it.
 
-#include "Parameters.h"
-#include "dsp/Looper.h"
+#include "LooperIds.h"
+#include "ParamIds.h"
+
+#include "hadronyche/vst/ParamSpec.h"
 
 #include "hadronyche/testhost/Host.h"
 

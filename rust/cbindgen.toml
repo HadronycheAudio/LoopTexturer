@@ -1,0 +1,24 @@
+# How the test in src/lib.rs makes src/LooperApi.h from src/ffi.rs and the bridge's status.
+
+language = "C++"
+pragma_once = true
+namespaces = ["LoopTexturer", "Ffi"]
+include_version = false
+documentation = true
+documentation_style = "c++"
+sys_includes = ["cstdint"]
+no_includes = true
+header = """// The looper, as the C++ side reaches it besides HadronycheCore's frame: the bridge that the panel reads, for its
+// status, waveform and export, and that the LV2's panel mirrors. Generated from rust/src/ffi.rs by cargo test in rust/,
+// so don't edit it here: change the Rust, and run HADRONYCHE_UPDATE_HEADERS=1 cargo test there to bring this up to date."""
+
+[export]
+include = ["StatusCopy", "ExportSettings"]
+# The constants the C++ side needs are in LooperIds.h, with the commands.
+item_types = ["structs", "functions"]
+
+[struct]
+rename_fields = "CamelCase"
+
+[parse]
+parse_deps = false

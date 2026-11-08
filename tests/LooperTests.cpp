@@ -31,7 +31,7 @@ void startRecordingFromTop (Plug& plug, Song& song)
 {
     song.locate (0);
     song.play (true);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
 }
 
 } // namespace
@@ -62,13 +62,13 @@ void testFreeExactTiming ()
     plug.set (kLooperFreeLength, 1.0);
     plug.settle (0.8);
 
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     auto in = silence (0.9);
     const size_t click = 20000;
     in[click] = 0.8f;
     Samples out;
     plug.runMono (in, out);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.runMono (silence (0.8), out);
 
     // One second later, plus the plug-in's 96 samples of latency.
@@ -120,10 +120,10 @@ void testOverdub ()
     plug.looperOnly ();
     recordFree (plug, 500, 0.2, 2.0);
 
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     Samples out;
     plug.runMono (sine (3000, 0.1, 2.1), out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.settle (0.05);
 
     plug.runMono (silence (2.0), out);
@@ -144,9 +144,9 @@ void testFeedbackUnity ()
     plug.runMono (silence (5.0), out);
     check ("the loop is bit-exact after 5 passes", sameAudio (before, plug.getStateBytes ()));
 
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.runMono (silence (2.2), out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.settle (0.05);
     check ("the loop is bit-exact after overdubbing silence", sameAudio (before, plug.getStateBytes ()));
 
@@ -260,7 +260,7 @@ void testClear ()
     plug.looperOnly ();
     recordFree (plug, 1000, 0.5, 1.0);
 
-    plug.pressButton (Looper::kCommandClear);
+    plug.pressButton (kCommandClear);
     plug.settle (0.3);
     Samples out;
     plug.runMono (silence (1.5), out);
@@ -275,13 +275,13 @@ void testRecMovesToOverdub ()
         plug.looperOnly ();
         plug.set (kLooperFreeLength, 1.0);
         plug.settle (0.8);
-        plug.pressButton (Looper::kCommandRec);
+        plug.pressButton (kCommandRec);
 
         Samples out;
         plug.runMono (sine (500, 0.2, 1.02), out);
         // No button pressed: this second tone should layer on top, not replace the first.
         plug.runMono (sine (3000, 0.1, 1.05), out);
-        plug.pressButton (Looper::kCommandOverdub);
+        plug.pressButton (kCommandOverdub);
         plug.settle (0.05);
 
         plug.runMono (silence (2.0), out);
@@ -295,11 +295,11 @@ void testRecMovesToOverdub ()
         plug.looperOnly ();
         plug.set (kLooperFreeLength, 1.0);
         plug.settle (0.8);
-        plug.pressButton (Looper::kCommandRec);
+        plug.pressButton (kCommandRec);
 
         Samples out;
         plug.runMono (sine (500, 0.2, 0.5), out);
-        plug.pressButton (Looper::kCommandRec);
+        plug.pressButton (kCommandRec);
         plug.runMono (sine (3000, 0.1, 2.0), out);
         plug.runMono (silence (1.0), out);
         check ("pressing Rec before the pass ends doesn't start overdubbing", toneLevel (out, 3000) < 0.001);
@@ -314,17 +314,17 @@ void testFreeStopAndPlay ()
     plug.settle (0.8);
 
     // On an empty tape, the loop starts where the recording starts.
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     auto in = silence (0.9);
     const size_t click = 20000;
     in[click] = 0.8f;
     Samples out;
     plug.runMono (in, out);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.runMono (silence (0.3), out);
     const auto before = plug.getStateBytes ();
 
-    plug.pressButton (Looper::kCommandStop);
+    plug.pressButton (kCommandStop);
     plug.set (kLooperFeedback, 50);
     plug.runMono (silence (1.5), out);
     check ("Stop silences the loop", rms (slice (out, 1000, 40000)) < 1e-6);
@@ -332,17 +332,17 @@ void testFreeStopAndPlay ()
     plug.set (kLooperFeedback, 100);
     plug.settle (0.1);
 
-    plug.pressButton (Looper::kCommandPlay);
+    plug.pressButton (kCommandPlay);
     plug.runMono (silence (0.9), out);
     const auto clicks = findClicks (out);
     std::printf ("  after Play, click at %zu, expected %zu\n", clicks.empty () ? 0 : clicks[0], click + 96);
     check ("Play relaunches from the start of the loop", clicks.size () == 1 && clicks[0] == click + 96);
 
-    plug.pressButton (Looper::kCommandStop);
+    plug.pressButton (kCommandStop);
     plug.settle (0.05);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.runMono (sine (3000, 0.1, 0.5), out);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.runMono (silence (0.5), out);
     plug.runMono (silence (0.6), out);
     check ("Rec restarts a stopped tape and records", rms (out) > 0.01);
@@ -368,7 +368,7 @@ void testSyncGrid ()
     const Samples rest (in.begin () + static_cast<std::ptrdiff_t> (beat * 2), in.end ());
     Samples out;
     plug.runMono (first, out);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.runMono (rest, out);
 
     std::printf ("  clicks at, in quarter notes:");
@@ -437,7 +437,7 @@ void testSyncOpenEnded ()
     in[1000] = 0.9f;
     Samples out;
     plug.runMono (in, out); // Two and a half bars in.
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.runMono (silence (10.0), out);
 
     const auto clicks = findClicks (out);
@@ -492,9 +492,9 @@ void testSyncTransport ()
     std::printf ("  after a locate, click at %zu, expected %zu\n", clicks.empty () ? 0 : clicks[0], expected);
     check ("resumes at the right place in the loop", clicks.size () == 1 && clicks[0] == expected);
 
-    plug.pressButton (Looper::kCommandStop);
+    plug.pressButton (kCommandStop);
     plug.runMono (silence (0.1), out);
-    plug.pressButton (Looper::kCommandPlay);
+    plug.pressButton (kCommandPlay);
     const double now = song.context.projectTimeMusic;
     const size_t untilBar = song.samplesFor (std::ceil (now / 4.0) * 4.0 - now);
     plug.runMono (silence (static_cast<double> (untilBar + bar) / kSampleRate), out);
@@ -546,7 +546,7 @@ void testSyncSeam ()
 
     Samples out;
     plug.runMono (in, out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.runMono (silence (2.5), out);
 
     double largestStep = 0.0;
@@ -572,11 +572,11 @@ void testSyncOverdub ()
 
     // Rec has moved on to overdubbing. This turns it off, then on again partway through the bar.
     plug.runMono (silence (0.3), out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.runMono (silence (0.1), out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.runMono (sine (3000, 0.1, 2.2), out);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.settle (0.05);
 
     plug.runMono (silence (2.0), out);
