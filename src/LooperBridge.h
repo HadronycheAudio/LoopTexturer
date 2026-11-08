@@ -1,73 +1,108 @@
 #pragma once
 
-#include "dsp/Tape.h"
+#include "LooperApi.h"
+#include "LooperIds.h"
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
-#include <mutex>
-#include <vector>
 
 namespace LoopTexturer {
 
-// What the processor shares with the UI: the looper's status and its tapes. The plug-in is not
-// distributable, so both sides run in one process and can share this object directly.
-//
-// VST3 messages only carry its ID, which the receiver looks up. That way, neither side can end up
-// holding a dangling pointer, whatever order the host destroys them in.
+// The looper's status, as the Rust side gives it in one piece.
+using LooperStatus = Ffi::StatusCopy;
+
+// A tape the looper plays from, as the panel reads it: its size, and the overview the waveform is drawn from. It's
+// the Rust side's, kept alive for as long as this is.
+class TapeView
+{
+public:
+    explicit TapeView (const void* tape) : _tape (tape) {}
+    ~TapeView () { Ffi::looptexturer_tape_release (_tape); }
+    TapeView (const TapeView&) = delete;
+    TapeView& operator= (const TapeView&) = delete;
+
+    int64_t getCapacity () const { return Ffi::looptexturer_tape_capacity (_tape); }
+    int64_t getBucketFrames () const { return Ffi::looptexturer_tape_bucket_frames (_tape); }
+
+    float getOverviewMin (int64_t bucket) const { return overview (bucket).first; }
+    float getOverviewMax (int64_t bucket) const { return overview (bucket).second; }
+
+private:
+    std::pair<float, float> overview (int64_t bucket) const
+    {
+        float low = 0.0f;
+        float high = 0.0f;
+        Ffi::looptexturer_tape_overview (_tape, bucket, &low, &high);
+        return { low, high };
+    }
+
+    const void* _tape;
+};
+
+// What the processor shares with the UI: the looper's status and its tapes, which live on the Rust side. The plug-in
+// is not distributable, so both sides run in one process and share it directly. VST3 messages only carry its ID,
+// which the receiver looks up on the Rust side. That way, neither side can end up holding a dangling pointer,
+// whatever order the host destroys them in.
 class LooperBridge
 {
 public:
-    static std::shared_ptr<LooperBridge> create ();
-    static std::shared_ptr<LooperBridge> find (int64_t id);
-
-    int64_t getId () const { return _id; }
-
-    // Written by the audio thread once per block, read by the UI and when saving.
-    struct Status
+    // The processor's own, from RustProcessor::shared ().
+    static std::shared_ptr<LooperBridge> retain (const void* shared)
     {
-        std::atomic<bool> isSyncMode { false };
-        std::atomic<bool> hasContent { false };
-        std::atomic<bool> isRecording { false };
-        std::atomic<bool> isOverdubbing { false };
-        std::atomic<bool> isArmed { false };   // Rec is waiting for the next bar line.
-        std::atomic<bool> isClosing { false }; // Recording ends at the next bar line.
-        std::atomic<bool> isPlayArmed { false };
-        std::atomic<bool> isPlaying { false };
-        std::atomic<bool> isTransportRunning { false };
-        std::atomic<bool> transportJumped { false }; // A recording was cancelled by a locate.
-        std::atomic<double> playhead { 0.0 };        // In cells.
-        std::atomic<int64_t> displayFrames { 0 };    // How many cells the waveform shows.
-        std::atomic<int64_t> loopFrames { 0 };
-        std::atomic<double> loopQuarters { 0.0 };
-        std::atomic<double> anchorQuarters { 0.0 };
-        std::atomic<double> framesPerQuarter { 0.0 };
-        std::atomic<double> writeSpeed { 1.0 };
-        std::atomic<double> tempo { 0.0 };
-        std::atomic<double> sampleRate { 0.0 };
-        std::atomic<const Tape*> activeTape { nullptr };
-    };
+        const void* bridge = Ffi::looptexturer_bridge_retain (shared);
+        return bridge ? std::shared_ptr<LooperBridge> (new LooperBridge (bridge)) : nullptr;
+    }
 
-    Status status;
+    // Null when there's no bridge with this ID any more.
+    static std::shared_ptr<LooperBridge> find (int64_t id)
+    {
+        const void* bridge = Ffi::looptexturer_bridge_find (id);
+        return bridge ? std::shared_ptr<LooperBridge> (new LooperBridge (bridge)) : nullptr;
+    }
 
-    // Set by the audio thread when it needs a larger tape. The processor's worker thread allocates it.
-    std::atomic<int64_t> requestedSyncFrames { 0 };
-    std::atomic<int64_t> requestedFreeFrames { 0 };
+    // For the LV2's panel, which fills it from the audio side's copies. See src/lv2/LooperLink.cpp.
+    static std::shared_ptr<LooperBridge> createMirror ()
+    {
+        return std::shared_ptr<LooperBridge> (new LooperBridge (Ffi::looptexturer_bridge_create_mirror ()));
+    }
 
-    // Keeps a tape alive. The audio thread only ever holds plain pointers to tapes kept here.
-    void addTape (const std::shared_ptr<Tape>& tape);
+    ~LooperBridge () { Ffi::looptexturer_bridge_release (_bridge); }
+    LooperBridge (const LooperBridge&) = delete;
+    LooperBridge& operator= (const LooperBridge&) = delete;
 
-    // Releases every tape that isn't in the list given.
-    void releaseTapesExcept (const std::vector<const Tape*>& inUse);
+    int64_t getId () const { return Ffi::looptexturer_bridge_id (_bridge); }
 
-    std::shared_ptr<Tape> getActiveTape () const;
+    LooperStatus getStatus () const
+    {
+        LooperStatus status {};
+        Ffi::looptexturer_bridge_status (_bridge, &status);
+        return status;
+    }
+
+    // A button, which the looper takes at the start of its next block.
+    void sendCommand (int command) const { Ffi::looptexturer_bridge_send_command (_bridge, command); }
+
+    // Null while the looper has no tape.
+    std::unique_ptr<TapeView> getActiveTape () const
+    {
+        const void* tape = Ffi::looptexturer_bridge_active_tape (_bridge);
+        return tape ? std::make_unique<TapeView> (tape) : nullptr;
+    }
+
+    // A mirror's status and overview, as copied from the audio side.
+    void setStatus (const LooperStatus& status) const { Ffi::looptexturer_bridge_set_status (_bridge, &status); }
+    void setOverview (int64_t first, const float* peaks, int64_t count) const
+    {
+        Ffi::looptexturer_bridge_set_overview (_bridge, first, peaks, count);
+    }
+
+    // The Rust side's, for its own functions.
+    const void* raw () const { return _bridge; }
 
 private:
-    LooperBridge () = default;
+    explicit LooperBridge (const void* bridge) : _bridge (bridge) {}
 
-    int64_t _id { 0 };
-    mutable std::mutex _tapesMutex;
-    std::vector<std::shared_ptr<Tape>> _tapes;
+    const void* _bridge;
 };
 
 } // namespace LoopTexturer

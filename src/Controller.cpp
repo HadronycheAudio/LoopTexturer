@@ -3,16 +3,10 @@
 #include "Editor.h"
 #include "LooperBridge.h"
 #include "Messages.h"
-#include "Parameters.h"
 
 using namespace Steinberg;
 
 namespace LoopTexturer {
-
-Controller::Controller ()
-: SpecController (getParamSpec, kParamCount, [] (IBStream* state, const Hadronyche::ParamValueSink& onValue) { return readParamState (state, onValue); })
-{
-}
 
 IPlugView* Controller::createEditor ()
 {

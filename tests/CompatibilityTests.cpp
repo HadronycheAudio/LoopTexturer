@@ -338,7 +338,7 @@ void testOlderTapeReplaced ()
     check ("it loads", plug.component->setState (&stream) == kResultOk);
     plug.looperOnly ();
     plug.settle (0.1);
-    plug.pressButton (Looper::kCommandClear);
+    plug.pressButton (kCommandClear);
     plug.set (kLooperFreeLength, 30.0);
 
     // The buttons do nothing until the worker thread has provided the new tape, however long that
@@ -352,14 +352,14 @@ void testOlderTapeReplaced ()
     {
         sleepMilliseconds (20);
         plug.settle (0.8);
-        plug.pressButton (Looper::kCommandRec);
+        plug.pressButton (kCommandRec);
         plug.runMono (slice (in, 0, 4800), out);
         isRecording = plug.getStateBytes ().size () != kNoLoopStateBytes;
     }
     check ("recording starts after clearing", isRecording);
 
     plug.runMono (slice (in, 4800, in.size () - 4800), out);
-    plug.pressButton (Looper::kCommandRec);
+    plug.pressButton (kCommandRec);
     plug.settle (0.05);
 
     const auto written = plug.getStateBytes ();

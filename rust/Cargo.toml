@@ -1,0 +1,31 @@
+# The plug-in's Rust side, which cmake/HadronycheRust.cmake in the library builds into the plug-in. The plug-in's
+# version is in CMakeLists.txt, so this one is left at nothing.
+
+[package]
+name = "looptexturer"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+hadronyche-dsp = { path = "../external/hadronychecore/rust/hadronyche-dsp" }
+hadronyche-plugin = { path = "../external/hadronychecore/rust/hadronyche-plugin" }
+
+[dev-dependencies]
+# Only a test uses it, to keep src/LooperApi.h current, so the plug-in's build doesn't compile it.
+cbindgen = "0.29"
+
+[workspace]
+
+# A Debug plug-in has to keep up with real time too.
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+codegen-units = 1
+lto = true

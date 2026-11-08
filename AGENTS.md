@@ -6,7 +6,9 @@ LoopTexturer is a VST® 3 insert plug-in for sound design in Cubase on Windows: 
 
 `docs/signal-path.md` is the behaviour specification. `README.md` covers building and usage.
 
-Code shared with the other Hadronyche plug-ins is in the `HadronycheCore` submodule, at `external/hadronychecore`: the parameters' curves and saved format, the processor and controller base classes, the module entry, `PanelEditor`, `Smoother`, the test host, the build setup and CI. Its `AGENTS.md` has its own rules.
+Code shared with the other Hadronyche plug-ins is in the `HadronycheCore` submodule, at `external/hadronychecore`: the parameters' curves and saved format, the frame that the Rust side fits into on both sides of the boundary, the module entry, `PanelEditor`, `Smoother`, the state-variable filter kernel, the test host, the build setup and CI. Its `AGENTS.md` has its own rules.
+
+The signal chain, the looper, its worker thread, the loop's saved state and the parameter table are Rust, in `rust/`. The crate implements HadronycheCore's `Processor` trait, and depends on its `rust/hadronyche-plugin` and `rust/hadronyche-dsp` through the submodule. `hadronyche_add_rust` in `CMakeLists.txt` builds it into the plug-in, and the C++ in `src/` is the VST3 classes around it, on `RustProcessor` and `RustController`, with the panel, the export and the LV2's link reading the looper through the C functions in `rust/src/ffi.rs`, which `src/LooperApi.h` is generated from. Rust from [rustup](https://rustup.rs) is a build requirement on every system.
 
 ## Commands
 
@@ -42,7 +44,7 @@ ctest --test-dir build -C Release -N
 Copy-Item -Recurse -Force build/VST3/Release/LoopTexturer.vst3 "C:\Program Files\Common Files\VST3\"
 ```
 
-There's no linter or formatter.
+There's no linter or formatter for the C++. In `rust/`, `cargo fmt` formats, and `cargo clippy --all-targets -- -D warnings` and `cargo test` have to pass. Three of those tests check that `src/ParamIds.h`, `src/LooperIds.h` and `src/LooperApi.h` are what the Rust side generates, and `HADRONYCHE_UPDATE_HEADERS=1 cargo test` rewrites them.
 
 Follow the existing style, which comes from the SDK: a space before call parentheses (`foo (x)`), `_member` for private members, `kName` for constants, and comments that explain why rather than what.
 
@@ -54,33 +56,35 @@ People use this plug-in in real projects. Breaking these rules damages saved pro
 
 - **Never change the Audio Unit codes,** `aufx` `LpTx` here and the manufacturer `Hdrn` in HadronycheCore. Hosts use them to find the plug-in in saved projects.
 - **Never change the class IDs in `src/PluginConfig.h`.** Cubase uses them to find the plug-in in saved projects.
-- **Never renumber, reorder or remove entries in `ParamId`** (`src/Parameters.h`). Their values are saved in projects and automation. Add new parameters just before `kParamCount`, and add the matching row to `kSpecs` in `src/Parameters.cpp`, which is listed in the same order.
+- **Never reorder or remove an entry in `Param`** (`rust/src/lib.rs`). Their positions are saved in projects and automation, and `src/ParamIds.h` is generated from them. Add a new parameter at the end, with its spec on the same line.
 - **Don't change the range or curve of an existing parameter.** Hosts store values normalized to 0..1, so this silently changes what saved projects sound like. If it's unavoidable, migrate old values and bump the state version.
-- **The label lists in `src/Parameters.cpp` must match the enums in `src/dsp/`** (`Lfo::Wave`, `StateVariableFilter::Mode`, `Saturator::Mode`), which are cast directly from parameter values. Only ever add to the end of these lists.
-- **Changing the saved format requires bumping `kStateVersion` and still reading every older version.** The format is:
-    1. `int32` version, `int32` count, then `int32` ID and `double` normalized value pairs (`writeParamState`).
-    2. From version 2, the loop (`Processor::writeLoopState`): `int32` has-loop flag, and if set, `int32` mode, `int64` frames, 4 `double`s (quarters, anchor, frames per quarter, write speed), then all left samples and all right samples as `float`.
-    3. Version 3 has the same layout. It extended the looper's length from 10 s to 30 s, so `readParamState` converts that parameter's value when reading older versions. Automation saved by hosts can't be converted.
+- **The label lists in `rust/src/lib.rs` must match the enums they name** (`Wave`, `SvfMode`, `saturator::Mode`, `LooperBars`), whose `from_index` functions take a parameter's value. Only ever add to the end of these lists.
+- **Changing the saved format requires bumping `STATE_VERSION` and still reading every older version.** The format is:
+    1. HadronycheCore's `ParamState.h`: `int32` version, `int32` count, then `int32` ID and `double` normalized value pairs.
+    2. From version 2, the loop (`write_loop_state` in `rust/src/lib.rs`, through the frame's `save_state`): `int32` has-loop flag, and if set, `int32` mode, `int64` frames, 4 `double`s (quarters, anchor, frames per quarter, write speed), then all left samples and all right samples as `float`.
+    3. Version 3 has the same layout. It extended the looper's length from 10 s to 30 s, so `migrate_param` converts that parameter's value when reading older versions. Automation saved by hosts can't be converted.
+- **The Rust port is bit for bit what the C++ was,** which HadronycheCore's `tools/nulltest/` showed against the last C++ build, so a change in the sound is a change, not rounding. Keep the arithmetic in the order it's written, `f32` and `f64` where they were, the gains through `f32` as `db_to_gain_f32` does, and a power of 2 through `hadronyche_dsp::pow2_f32`.
 - **Loading must tolerate missing or damaged data.** An older state has no loop section, which reads as having no loop.
 
 ### The audio thread
 
-`Processor::process` and everything it calls runs on the audio thread: `Looper::beginBlock`, `processSample`, `endBlock` and all of `src/dsp/`, apart from what's listed below.
+`LoopTexturer::process` in `rust/src/lib.rs` and everything it calls runs on the audio thread: `Looper::begin_block`, `process_sample`, `end_block` and the rest of the chain, apart from what's listed below.
 
-- **No allocation, locks, file access, system calls or anything else that can block.** This includes `std::vector` growth, `std::string`, `std::function` copies and `shared_ptr` copies. It's the reason for much of the design below, and the failure is audio dropouts that may not show up in testing.
-- **Work that takes too long for one block has to be spread out or moved elsewhere.** `Looper::eraseSomeOfFreeTape` clears a little per block, and large tapes are allocated and freed by the processor's worker thread.
-- `Tape`'s constructor, `Looper::prepare`, `LooperBridge`'s tape functions and `exportLoop` are not safe on the audio thread.
+- **No allocation, locks, file access, system calls or anything else that can block.** This includes a `Vec` growing, a `Mutex`, and cloning an `Arc`. It's the reason for much of the design below, and the failure is audio dropouts that may not show up in testing, though `lv2-matches-vst3` fails if a block allocates.
+- **Work that takes too long for one block has to be spread out or moved elsewhere.** `Looper::erase_some_of_free_tape` clears a little per block, and large tapes are allocated and freed by the worker thread.
+- `Tape::new`, `Looper::prepare`, the bridge's tape functions, the loop's state and `render_loop` are not for the audio thread.
+- **A panic is a bug, even though HadronycheCore's boundary catches it.** After one, that instance of the plug-in stays silent for good, which is what a user would notice.
 
 ### Sound and timing
 
-- **The reported latency must always be true.** It's 96 samples: 48 from each saturator (`Oversampler::kLatency`), at every sample rate and whether or not they're on, so that toggling them doesn't shift audio. Anything that changes it must update `Processor::getLatencySamples`, the dry delay in `Processor::process`, the `inputLatency` given to `Looper`, and the samples skipped in `exportLoop`.
+- **The reported latency must always be true.** It's 96 samples: 48 from each saturator (`saturator::LATENCY`), at every sample rate and whether or not they're on, so that toggling them doesn't shift audio. Anything that changes it must update `latency`, the dry delay in `process`, the `input_latency` given to `Looper`, and the samples skipped in `render_loop`.
 - **Broken samples at the input become silence, before anything else.** A NaN or infinite sample would otherwise stay in the filters and the loop for ever, and `broken-input` checks this.
-- **`Oversampler::kTaps` must stay of the form 4n + 1.** That's what makes its latency a whole number of samples, so that the dry signal stays perfectly aligned.
+- **`saturator::TAPS` must stay of the form 4n + 1.** That's what makes its latency a whole number of samples, so that the dry signal stays perfectly aligned.
 - **The looper reads and writes with one head at one position.** Separate heads, or any delay in the feedback path, would misalign overdubs and shift the loop on every pass.
-- **At 100% feedback, the loop must stay bit-exact.** Feedback works directly on stored cells, and `writeSpan` skips writing when nothing changes. Don't route feedback through an interpolated read.
+- **At 100% feedback, the loop must stay bit-exact.** Feedback works directly on stored cells, and `write_span` skips writing when nothing changes. Don't route feedback through an interpolated read.
 - **In tempo sync, the head's position is calculated from the host's musical position.** Don't accumulate it instead, or the loop will drift off the grid. This is also what makes a tempo change repitch the loop.
-- **The signal path is in single precision, and has to stay that way.** Use `Smoother::nextFloat` on it, and `dbToGain` from `src/dsp/FloatGain.h`. Going through double instead still compiles, and changes the sound of saved projects.
-- **`Hadronyche::Smoother` must stay double precision.** In single precision it stalls about 0.01% short of its target, which makes free running loops the wrong length.
+- **The signal path is in single precision, and has to stay that way.** Use `Smoother::step_f32` on it, and `db_to_gain_f32`. Going through `f64` instead still compiles, and changes the sound of saved projects.
+- **`Smoother` must stay double precision.** In single precision it stalls about 0.01% short of its target, which makes free running loops the wrong length.
 
 ### Decisions made by the project owner
 
@@ -102,13 +106,14 @@ In `docs/signal-path.md`, **Requirement** marks the owner's decisions and **Prop
 
 - **Don't edit anything in `external/vst3sdk`.** It's a submodule pinned to `v3.8.1_build_84`. `git submodule status` shows a misleading `v3.7.3...` label for that same commit, so check with `git -C external/vst3sdk describe --tags`.
 - **Don't edit `external/hadronychecore` from here.** Change it in its own repository, and move the submodule here afterwards, once the new version has been compared with the old as its `AGENTS.md` describes.
+- **The Rust side builds from the submodule, even with `HADRONYCHE_CORE_DIR` set,** because Cargo can't redirect a path dependency. To work on both, point the submodule at the commit in the other checkout, and the configure stops when the two differ.
 - Don't change git configuration. Commit or push only when asked.
 
 ## Architecture
 
 ### Signal path
 
-`Processor::process` runs this for every sample:
+`LoopTexturer::process` in `rust/src/lib.rs` runs this for every sample:
 
 ```
 In → Gain → Pan (LFO) → Filter (LFO) → Saturator ─┬─ 48-sample delay ──────────────┬→ Dry/wet → Volume → Out
@@ -121,29 +126,29 @@ Understanding this is necessary before changing the looper:
 
 | Thread | Runs | Talks to the others through |
 | --- | --- | --- |
-| Audio | `Processor::process`, the `Looper` engine | Atomics only |
-| UI | `Editor`, `WaveformView`, `exportLoop` | Reads `LooperBridge`, sends VST3 messages |
-| Host | `setState`, `getState`, `setActive` | Atomics, and handing over a `LoadedLoop` |
-| Worker (`Processor::runWorker`) | Allocates and frees tapes | `requestedSyncFrames`, `requestedFreeFrames`, `offerSyncTape`, `offerFreeTape`, `_tapeChangeMutex` |
-| LV2 messages, in the LV2 only | The wrapper's message thread: the buttons' messages to `Processor::notify`, and `src/lv2/LooperLink.cpp`'s copies for the panel | Reads `LooperBridge` as the UI does, and lock-free queues to the audio thread |
+| Audio | `RustProcessor::process`, then `LoopTexturer::process` and the `Looper` in Rust | Atomics only |
+| UI | `Editor`, `WaveformView`, `exportLoop` | Reads the bridge through `src/LooperApi.h`, sends VST3 messages |
+| Host | `setState`, `getState`, `setActive` | Atomics, and handing over a `LoadedLoop` through the bridge |
+| Worker (`Worker::run` in `rust/src/lib.rs`) | Allocates and frees tapes | The bridge's `requested_sync_frames`, `requested_free_frames`, the offered tapes in its mailbox, and its `tape_change` lock |
+| LV2 messages, in the LV2 only | The wrapper's message thread: the buttons' messages to `Processor::notify`, and `src/lv2/LooperLink.cpp`'s copies for the panel | Reads the bridge as the UI does, and lock-free queues to the audio thread |
 
 How the pieces connect:
 
-- **Parameters:** the host sends changes through `process`, and they land in `Processor::_params` as atomics. The last value per block is used, followed by smoothing. `getParamSpec` is the one definition of every parameter's range and text, shared by `Processor`, `Controller` and `Editor`.
-- **Buttons:** `Editor` → `Controller::sendLooperCommand` → VST3 message → `Processor::notify` → `Looper::sendCommand`, an atomic bitmask read at the start of the next block.
-- **Status and audio for the UI:** `LooperBridge` holds status atomics written once per block, and the tapes. `Tape` stores samples as relaxed atomics so that the UI can read while the audio thread writes without a data race.
-- **Finding the bridge:** the processor sends only the bridge's ID in a message, and the controller looks it up in a registry of weak pointers. This avoids dangling pointers, whatever order the host destroys things in. It relies on the plug-in not being distributable (the `0` flag in `src/PluginEntry.cpp`), so that both sides share one process. The LV2 can't rely on that, so its panel gets a copy instead, as [Linux](#linux) describes.
-- **Tape lifetime:** `LooperBridge` owns tapes through `shared_ptr`, and the audio thread holds plain pointers. The worker releases only tapes outside `Looper::getTapesInUse`. Hold `_tapeChangeMutex` while adding a tape until the looper knows about it, or the worker could release it.
-- **Restoring a loop:** `setState` writes parameters first and then hands over the `LoadedLoop`. If the order were reversed, the audio thread could see the old mode, treat it as a mode switch and clear the new loop.
+- **Parameters:** the host sends changes through `process`, and they land in `RustProcessor` as atomics, which hands the Rust side a snapshot with each block. The last value per block is used, followed by smoothing. `PARAMS` in `rust/src/lib.rs` is the one definition of every parameter's range and text: the Rust side reads it directly, and `Controller`, `Editor` and `src/lv2/PluginInfo.cpp` read it through `Hadronyche::RustPlugin::getSpec`.
+- **Buttons:** `Editor` → `Controller::sendLooperCommand` → VST3 message → `Processor::notify` → `looptexturer_bridge_send_command`, an atomic bitmask in the bridge's mailbox, read at the start of the next block.
+- **Status and audio for the UI:** the `Bridge` in `rust/src/bridge.rs` holds status atomics written once per block, and the tapes. `Tape` stores samples as relaxed atomics so that the UI can read while the audio thread writes without a data race. The C++ `LooperBridge` is a view of it, over the C functions.
+- **Finding the bridge:** the processor sends only the bridge's ID in a message, which `RustProcessor::shared ()` gives it, and the controller looks it up in the Rust side's registry of weak pointers. This avoids dangling pointers, whatever order the host destroys things in. It relies on the plug-in not being distributable (the `0` flag in `src/PluginEntry.cpp`), so that both sides share one process. The LV2 can't rely on that, so its panel gets a copy instead, as [Linux](#linux) describes.
+- **Tape lifetime:** the bridge owns tapes through `Arc`, and the audio thread holds plain pointers. The worker releases only tapes outside the mailbox's `tapes_in_use`. Hold the bridge's `tape_change` lock while adding a tape until the looper knows about it, or the worker could release it.
+- **Restoring a loop:** `RustProcessor::setState` restores the parameters first and then calls `load_state`, which hands over the `LoadedLoop`. If the order were reversed, the audio thread could see the old mode, treat it as a mode switch and clear the new loop.
 
 ### The looper
 
-`src/dsp/Looper.cpp` is a tape with one head. The modes only differ in what moves it:
+`rust/src/looper.rs` is a tape with one head. The modes only differ in what moves it:
 
 - **Free running:** a 30 s tape, where the length knob sets the head's speed. Changing the speed repitches the loop. Stop leaves the tape standing still. A restored loop keeps the tape size it was saved with, so `_freeTape`'s capacity can differ until that loop is cleared, when the worker provides a full tape.
 - **Tempo sync:** a tape sized for 64 bars at the current tempo plus 25%, allocated by the worker when you enter this mode. `_syncState` goes from `Empty` to `Recording` to `Loop`.
 
-`writeSpan` fills every cell the head passed, ramping between input samples, so audio recorded at any speed plays back cleanly at that speed. `Tape::read` averages cells when playing faster than the audio was recorded, to limit aliasing. Punching in and out uses short envelopes to avoid clicks, and at the end of a recording these also crossfade the loop's seam.
+`write_span` fills every cell the head passed, ramping between input samples, so audio recorded at any speed plays back cleanly at that speed. `Tape::read` averages cells when playing faster than the audio was recorded, to limit aliasing. Punching in and out uses short envelopes to avoid clicks, and at the end of a recording these also crossfade the loop's seam.
 
 A locate during a recording's first pass cancels it, because its length isn't settled yet.
 
@@ -225,7 +230,7 @@ Rules for releases:
 - **The release is built in an `ubuntu:22.04` container on CI, not on the runner,** because a binary only loads on a glibc as new as the one it's built against. HadronycheCore's `tools/linux/test-tarball.sh` checks this, and CI runs the tarball on other distributions too.
 - **The LV2 is HadronycheCore's wrapper around the VST3's own classes.** Its `AGENTS.md` has the rules. It has audio, control ports, state with the loop, latency, transport and the VST3's panel. `lv2-matches-vst3` compares it with the VST3, bit for bit.
 - **Never change the URI, the panel's URI, the symbols in `src/lv2/PluginInfo.cpp` and the ports `ui_in` and `ui_out`.** They've been released, and hosts use them to find the plug-in and its values in saved projects. A new parameter adds a symbol at the end.
-- **The LV2's panel never shares memory with its processor,** because a host can run it in another process. `src/lv2/LooperLink.cpp`, which only the LV2 builds, keeps the processor's bridge ID on the audio side, and sends the panel copies of `LooperBridge`'s status and of the tape's overview buckets instead, about 30 times a second and only the parts that changed. The panel side builds a `LooperBridge` of its own from them and introduces it with the processor's own message, so `Controller` and `Editor` are unchanged. The buttons' messages go back unchanged. Keep it that way: what the LV2 needs differently goes in `src/lv2/`, around the VST3 classes, not in them.
+- **The LV2's panel never shares memory with its processor,** because a host can run it in another process. `src/lv2/LooperLink.cpp`, which only the LV2 builds, keeps the processor's bridge ID on the audio side, and sends the panel copies of the bridge's status and of the tape's overview buckets instead, about 30 times a second and only the parts that changed. The panel side builds a mirror bridge of its own from them, with `LooperBridge::createMirror`, and introduces it with the processor's own message, so `Controller` and `Editor` are unchanged. The buttons' messages go back unchanged. Keep it that way: what the LV2 needs differently goes in `src/lv2/`, around the VST3 classes, not in them.
 - **The copied waveform uses the tape's own overview buckets,** so it matches the VST3's, except that a column's edge can fall one bucket differently, which moves a few columns by a few pixels. A coarser copy showed visibly different peaks.
 - **`lv2-looper` runs the LV2 and its panel as a host does,** carrying the messages itself, and clicks the real buttons. It checks the sound, what the panel draws, a panel opened later, a restored loop, damaged messages both ways, a host that doesn't pass messages back, and one without a URID map. `tests/lv2/LooperLv2Test.cpp` uses the same positions as `PanelTest.cpp`. Set `LOOPTEXTURER_SCREENSHOTS` to a folder to save the panel as PPM files.
 - **There's no dragging,** which is the owner's decision. `kCanDrag` in `Editor.cpp` turns it off, and `panel` doesn't exist here to test that.

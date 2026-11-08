@@ -112,7 +112,7 @@ void testGainAndVolume ()
 
     Plug silent;
     silent.neutral ();
-    silent.set (kVolume, kVolumeSilenceDb);
+    silent.set (kVolume, Hadronyche::kVolumeSilenceDb);
     silent.settle ();
     silent.runMono (in, out);
     check ("Volume at its minimum is effectively silent", rms (out, 12000) < 1e-6);
@@ -352,11 +352,11 @@ void testBrokenInput ()
         plug.set (kLooperFreeLength, 1.0);
         plug.settle (0.8);
 
-        plug.pressButton (Looper::kCommandRec);
+        plug.pressButton (kCommandRec);
         Samples out;
         plug.runMono (breakSamples (sine (300.0, 0.5, 1.0)), out);
         plug.runMono (silence (0.1), out);
-        plug.pressButton (Looper::kCommandOverdub);
+        plug.pressButton (kCommandOverdub);
         plug.settle (0.05);
 
         plug.runMono (silence (2.0), out);
@@ -465,7 +465,7 @@ void testParameterText ()
     Plug plug;
     const std::tuple<ParamId, double> cases[] = {
         { kGain, 7.5 }, { kFilterFreq, 1000.0 }, { kFilterMode, 3.0 }, { kSatMode, 4.0 }, { kSatOn, 0.0 },
-        { kVolume, kVolumeSilenceDb }, { kPanLfoRate, 0.1 }, { kLooperBars, 6.0 }, { kLooperCustomBars, 32.0 }
+        { kVolume, Hadronyche::kVolumeSilenceDb }, { kPanLfoRate, 0.1 }, { kLooperBars, 6.0 }, { kLooperCustomBars, 32.0 }
     };
     for (const auto& [id, plain] : cases)
     {
@@ -500,7 +500,7 @@ void measureCpu ()
     plug.looperOnly ();
     recordFree (plug, 440, 0.3, 0.5);
     plug.set (kLooperFeedback, 90);
-    plug.pressButton (Looper::kCommandOverdub);
+    plug.pressButton (kCommandOverdub);
     plug.settle (0.05);
 
     const auto start = std::chrono::steady_clock::now ();

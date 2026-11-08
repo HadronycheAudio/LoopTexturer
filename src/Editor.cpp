@@ -3,8 +3,9 @@
 #include "Controller.h"
 #include "LoopExport.h"
 #include "LooperBridge.h"
-#include "Parameters.h"
-#include "dsp/Looper.h"
+#include "ParamIds.h"
+
+#include "hadronyche/vst/RustPlugin.h"
 
 #include "vstgui/lib/cdropsource.h"
 #include "vstgui/vstgui.h"
@@ -74,37 +75,37 @@ const CColor kPlayColor (34, 128, 70);
 
 const Hadronyche::PanelTheme kTheme { kPanelColor, kSectionColor, kFrameColor, kAccentColor, kTextColor, kDimTextColor };
 
-std::string describeStatus (const LooperBridge::Status& status)
+std::string describeStatus (const LooperStatus& status)
 {
-    if (status.isSyncMode.load ())
+    if (status.isSyncMode)
     {
-        const bool isRunning = status.isTransportRunning.load ();
-        if (status.isArmed.load ())
+        const bool isRunning = status.isTransportRunning;
+        if (status.isArmed)
             return isRunning ? "Rec: waiting for the next bar" : "Rec: waiting for the transport";
-        if (status.isClosing.load ())
+        if (status.isClosing)
             return "Recording: ends at the next bar";
-        if (status.isRecording.load ())
+        if (status.isRecording)
             return "Recording";
-        if (status.isPlayArmed.load ())
+        if (status.isPlayArmed)
             return "Play: waiting for the next bar";
-        if (status.transportJumped.load () && !status.hasContent.load ())
+        if (status.transportJumped && !status.hasContent)
             return "Recording cancelled: the transport jumped";
-        if (!status.hasContent.load ())
+        if (!status.hasContent)
             return "Empty: press Rec";
-        if (status.isOverdubbing.load ())
+        if (status.isOverdubbing)
             return "Overdubbing";
         if (!isRunning)
             return "Waiting for the transport";
-        return status.isPlaying.load () ? (kCanDrag ? "Playing: drag to the timeline" : "Playing") : "Stopped";
+        return status.isPlaying ? (kCanDrag ? "Playing: drag to the timeline" : "Playing") : "Stopped";
     }
 
-    if (status.isRecording.load ())
+    if (status.isRecording)
         return "Recording";
-    if (status.isOverdubbing.load ())
+    if (status.isOverdubbing)
         return "Overdubbing";
-    if (!status.hasContent.load ())
+    if (!status.hasContent)
         return "Empty: press Rec";
-    return status.isPlaying.load () ? (kCanDrag ? "Looping: drag to the timeline" : "Looping") : "Stopped: press Play";
+    return status.isPlaying ? (kCanDrag ? "Looping: drag to the timeline" : "Looping") : "Stopped: press Play";
 }
 
 } // namespace
@@ -140,10 +141,11 @@ public:
             return;
         }
 
+        const LooperStatus status = bridge->getStatus ();
         if (const auto tape = bridge->getActiveTape ())
-            drawWaveform (context, bounds, *tape, bridge->status);
+            drawWaveform (context, bounds, *tape, status);
 
-        drawText (context, bounds, statusText (bridge->status));
+        drawText (context, bounds, statusText (status));
         setDirty (false);
     }
 
@@ -183,7 +185,7 @@ public:
     }
 
 private:
-    std::string statusText (const LooperBridge::Status& status) const
+    std::string statusText (const LooperStatus& status) const
     {
         if (_isConfirming)
             return "Switching mode clears the loop";
@@ -202,9 +204,9 @@ private:
         context->drawString (text.c_str (), area, kLeftText);
     }
 
-    static void drawWaveform (CDrawContext* context, const CRect& bounds, const Tape& tape, const LooperBridge::Status& status)
+    static void drawWaveform (CDrawContext* context, const CRect& bounds, const TapeView& tape, const LooperStatus& status)
     {
-        const int64_t frames = status.displayFrames.load ();
+        const int64_t frames = status.displayFrames;
         if (frames <= 0)
             return;
 
@@ -215,7 +217,7 @@ private:
 
         const auto columnBucket = [&] (int column) {
             const auto frame = static_cast<int64_t> (static_cast<double> (column) / width * static_cast<double> (frames));
-            return std::min (frame / bucketFrames, Tape::kOverviewBuckets - 1);
+            return std::min (frame / bucketFrames, kOverviewBuckets - 1);
         };
 
         context->setDrawMode (kAliasing);
@@ -240,7 +242,7 @@ private:
             context->drawLine (std::make_pair (CPoint (x, top), CPoint (x, std::max (bottom, top + 1.0))));
         }
 
-        const double playhead = std::clamp (status.playhead.load () / static_cast<double> (frames), 0.0, 1.0);
+        const double playhead = std::clamp (status.playhead / static_cast<double> (frames), 0.0, 1.0);
         const double x = std::floor (bounds.left + playhead * width) + 0.5;
         context->setFrameColor (kAccentColor);
         context->drawLine (std::make_pair (CPoint (x, bounds.top + 1.0), CPoint (x, bounds.bottom - 1.0)));
@@ -262,14 +264,14 @@ private:
     void startDrag ()
     {
         const auto bridge = _controller.getLooperBridge ();
-        if (!bridge || !bridge->status.hasContent.load () || bridge->status.loopFrames.load () <= 0)
+        if (!bridge || !bridge->getStatus ().hasContent || bridge->getStatus ().loopFrames <= 0)
         {
             showMessage ("Nothing to drag: the loop is empty");
             return;
         }
 
         const auto plain = [this] (ParamId id) {
-            return normalizedToPlain (getParamSpec (id), _controller.getParamNormalized (id));
+            return Hadronyche::normalizedToPlain (Hadronyche::RustPlugin::getSpec (id), _controller.getParamNormalized (id));
         };
 
         LoopExportSettings settings {};
@@ -308,7 +310,7 @@ private:
 };
 
 Editor::Editor (Controller* controller)
-: PanelEditor (controller, kEditorWidth, kEditorHeight, getParamSpec, kParamCount, kTheme, kLayout), _controller (controller)
+: PanelEditor (controller, kEditorWidth, kEditorHeight, Hadronyche::RustPlugin::getSpec, kParamCount, kTheme, kLayout), _controller (controller)
 {
 }
 
@@ -461,7 +463,7 @@ void Editor::onClose ()
 void Editor::onSync ()
 {
     const auto plain = [this] (ParamId id) {
-        return normalizedToPlain (getParamSpec (id), _controller->getParamNormalized (id));
+        return Hadronyche::normalizedToPlain (Hadronyche::RustPlugin::getSpec (id), _controller->getParamNormalized (id));
     };
 
     const bool isSync = plain (kLooperMode) > 0.5;
@@ -475,11 +477,11 @@ void Editor::onSync ()
 
     if (const auto bridge = _controller->getLooperBridge ())
     {
-        const auto& status = bridge->status;
-        const bool isRecording = status.isRecording.load () || status.isArmed.load () || status.isClosing.load ();
-        const bool isPlaying = status.hasContent.load () && (status.isPlaying.load () || status.isPlayArmed.load ());
+        const LooperStatus status = bridge->getStatus ();
+        const bool isRecording = status.isRecording || status.isArmed || status.isClosing;
+        const bool isPlaying = status.hasContent && (status.isPlaying || status.isPlayArmed);
         setButtonFill (_recButton, isRecording ? _recordFill : _idleFill);
-        setButtonFill (_overdubButton, status.isOverdubbing.load () ? _overdubFill : _idleFill);
+        setButtonFill (_overdubButton, status.isOverdubbing ? _overdubFill : _idleFill);
         setButtonFill (_playButton, isPlaying ? _playFill : _idleFill);
     }
 
@@ -513,11 +515,11 @@ void Editor::valueChanged (CControl* control)
 
         switch (tag)
         {
-            case kTagRec: _controller->sendLooperCommand (Looper::kCommandRec); break;
-            case kTagOverdub: _controller->sendLooperCommand (Looper::kCommandOverdub); break;
-            case kTagPlay: _controller->sendLooperCommand (Looper::kCommandPlay); break;
-            case kTagStop: _controller->sendLooperCommand (Looper::kCommandStop); break;
-            case kTagClear: _controller->sendLooperCommand (Looper::kCommandClear); break;
+            case kTagRec: _controller->sendLooperCommand (kCommandRec); break;
+            case kTagOverdub: _controller->sendLooperCommand (kCommandOverdub); break;
+            case kTagPlay: _controller->sendLooperCommand (kCommandPlay); break;
+            case kTagStop: _controller->sendLooperCommand (kCommandStop); break;
+            case kTagClear: _controller->sendLooperCommand (kCommandClear); break;
             case kTagConfirmMode:
                 setParameter (kLooperMode, _pendingMode);
                 showModeConfirmation (false);
@@ -533,7 +535,7 @@ void Editor::valueChanged (CControl* control)
     if (id == kLooperMode)
     {
         const auto bridge = _controller->getLooperBridge ();
-        if (bridge && bridge->status.hasContent.load ())
+        if (bridge && bridge->getStatus ().hasContent)
         {
             // The menu goes back to the current mode by itself, until this is confirmed.
             _pendingMode = value;

@@ -3,12 +3,12 @@
 // The VST3 panel reads LooperBridge straight from the processor's memory, which LV2 can't promise, since a host can
 // run the UI in another process. So the audio side keeps the processor's introduction to itself, and sends the panel
 // copies of the looper's status and of the tape's overview instead, through the wrapper's message ports. The panel side
-// builds a LooperBridge of its own from those, and introduces that to the controller with the processor's own message,
-// so that Controller and Editor work unchanged. The buttons' messages go back to the processor unchanged.
+// builds a mirror LooperBridge of its own from those, on the Rust side, and introduces that to the controller with the
+// processor's own message, so that Controller and Editor work unchanged. The buttons' messages go back to the processor
+// unchanged.
 
 #include "LooperBridge.h"
 #include "Messages.h"
-#include "dsp/Tape.h"
 
 #include "hadronyche/lv2/Message.h"
 #include "hadronyche/lv2/MessageLink.h"
@@ -44,7 +44,7 @@ constexpr const char* kMessageHello = "LooperLv2Hello";
 
 // The copy has the tape's own overview buckets, one for one, so that its columns cover what the VST3 panel's do. Its
 // tape holds one frame per bucket, and shows as many frames as the real one shows buckets.
-constexpr int64_t kWaveBuckets = Tape::kOverviewBuckets;
+constexpr int64_t kWaveBuckets = kOverviewBuckets;
 constexpr int64_t kChunkBuckets = 256;
 constexpr int64_t kChunkCount = kWaveBuckets / kChunkBuckets;
 
@@ -113,9 +113,9 @@ public:
         if (!_bridge)
             return;
 
-        const auto& status = _bridge->status;
+        const LooperStatus status = _bridge->getStatus ();
         const auto tape = _bridge->getActiveTape ();
-        const int64_t frames = status.displayFrames.load ();
+        const int64_t frames = status.displayFrames;
         const int64_t bucketFrames = tape ? tape->getBucketFrames () : 1;
         const int64_t buckets = tape && frames > 0 ? std::min ((frames + bucketFrames - 1) / bucketFrames, kWaveBuckets) : 0;
 
@@ -124,26 +124,26 @@ public:
             if (isSet)
                 copy.flags |= bit;
         };
-        flag (status.isSyncMode.load (), StatusCopy::kSyncMode);
-        flag (status.hasContent.load (), StatusCopy::kHasContent);
-        flag (status.isRecording.load (), StatusCopy::kRecording);
-        flag (status.isOverdubbing.load (), StatusCopy::kOverdubbing);
-        flag (status.isArmed.load (), StatusCopy::kArmed);
-        flag (status.isClosing.load (), StatusCopy::kClosing);
-        flag (status.isPlayArmed.load (), StatusCopy::kPlayArmed);
-        flag (status.isPlaying.load (), StatusCopy::kPlaying);
-        flag (status.isTransportRunning.load (), StatusCopy::kTransportRunning);
-        flag (status.transportJumped.load (), StatusCopy::kTransportJumped);
+        flag (status.isSyncMode, StatusCopy::kSyncMode);
+        flag (status.hasContent, StatusCopy::kHasContent);
+        flag (status.isRecording, StatusCopy::kRecording);
+        flag (status.isOverdubbing, StatusCopy::kOverdubbing);
+        flag (status.isArmed, StatusCopy::kArmed);
+        flag (status.isClosing, StatusCopy::kClosing);
+        flag (status.isPlayArmed, StatusCopy::kPlayArmed);
+        flag (status.isPlaying, StatusCopy::kPlaying);
+        flag (status.isTransportRunning, StatusCopy::kTransportRunning);
+        flag (status.transportJumped, StatusCopy::kTransportJumped);
         flag (tape != nullptr, StatusCopy::kHasTape);
-        copy.playhead = buckets > 0 ? status.playhead.load () / static_cast<double> (bucketFrames) : 0.0;
+        copy.playhead = buckets > 0 ? status.playhead / static_cast<double> (bucketFrames) : 0.0;
         copy.displayFrames = buckets > 0 ? std::max<int64_t> (1, (frames + bucketFrames / 2) / bucketFrames) : 0;
-        copy.loopFrames = status.loopFrames.load ();
-        copy.loopQuarters = status.loopQuarters.load ();
-        copy.anchorQuarters = status.anchorQuarters.load ();
-        copy.framesPerQuarter = status.framesPerQuarter.load ();
-        copy.writeSpeed = status.writeSpeed.load ();
-        copy.tempo = status.tempo.load ();
-        copy.sampleRate = status.sampleRate.load ();
+        copy.loopFrames = status.loopFrames;
+        copy.loopQuarters = status.loopQuarters;
+        copy.anchorQuarters = status.anchorQuarters;
+        copy.framesPerQuarter = status.framesPerQuarter;
+        copy.writeSpeed = status.writeSpeed;
+        copy.tempo = status.tempo;
+        copy.sampleRate = status.sampleRate;
 
         if (auto* message = Message::create ())
         {
@@ -248,9 +248,7 @@ private:
         {
             // Introduced only once something arrived, so that a host passing no messages shows the VST3's own text
             // for an unconnected looper.
-            _bridge = LooperBridge::create ();
-            _tape = std::make_shared<Tape> (kWaveBuckets);
-            _bridge->addTape (_tape);
+            _bridge = LooperBridge::createMirror ();
 
             auto* introduction = Message::create ();
             introduction->setMessageID (kMessageLooperBridge);
@@ -260,7 +258,7 @@ private:
         }
 
         const auto has = [&copy] (uint32_t bit) { return (copy.flags & bit) != 0; };
-        auto& status = _bridge->status;
+        LooperStatus status {};
         status.isSyncMode = has (StatusCopy::kSyncMode);
         status.hasContent = has (StatusCopy::kHasContent);
         status.isRecording = has (StatusCopy::kRecording);
@@ -271,6 +269,7 @@ private:
         status.isPlaying = has (StatusCopy::kPlaying);
         status.isTransportRunning = has (StatusCopy::kTransportRunning);
         status.transportJumped = has (StatusCopy::kTransportJumped);
+        status.hasTape = has (StatusCopy::kHasTape);
         status.playhead = copy.playhead;
         status.displayFrames = std::clamp<int64_t> (copy.displayFrames, 0, kWaveBuckets);
         status.loopFrames = copy.loopFrames;
@@ -280,7 +279,7 @@ private:
         status.writeSpeed = copy.writeSpeed;
         status.tempo = copy.tempo;
         status.sampleRate = copy.sampleRate;
-        status.activeTape = has (StatusCopy::kHasTape) ? _tape.get () : nullptr;
+        _bridge->setStatus (status);
     }
 
     void applyPeaks (int64 first, const void* data, uint32 size)
@@ -291,12 +290,10 @@ private:
 
         std::vector<float> peaks (static_cast<size_t> (2 * count));
         std::memcpy (peaks.data (), data, peaks.size () * sizeof (float));
-        for (int64_t i = 0; i < count; ++i)
-            _tape->setOverview (first + i, peaks[static_cast<size_t> (2 * i)], peaks[static_cast<size_t> (2 * i + 1)]);
+        _bridge->setOverview (first, peaks.data (), count);
     }
 
     std::shared_ptr<LooperBridge> _bridge;
-    std::shared_ptr<Tape> _tape;
 };
 
 } // namespace

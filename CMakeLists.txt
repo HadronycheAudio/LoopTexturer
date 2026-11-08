@@ -17,30 +17,23 @@ include("${HADRONYCHE_CORE_DIR}/cmake/HadronychePlugin.cmake")
 hadronyche_use_vst3_sdk()
 
 # --- Plug-in ------------------------------------------------------------------
+hadronyche_add_rust(LoopTexturer)
 hadronyche_add_plugin(LoopTexturer AU_TYPE aufx AU_SUBTYPE LpTx SOURCES
     src/PluginConfig.h
     src/PluginEntry.cpp
+    src/ParamIds.h
+    src/LooperIds.h
+    src/LooperApi.h
     src/Messages.h
-    src/LooperBridge.h
-    src/LooperBridge.cpp
-    src/LoopExport.h
-    src/LoopExport.cpp
-    src/Parameters.h
-    src/Parameters.cpp
     src/Processor.h
     src/Processor.cpp
     src/Controller.h
     src/Controller.cpp
     src/Editor.h
     src/Editor.cpp
-    src/dsp/FloatGain.h
-    src/dsp/Lfo.h
-    src/dsp/Looper.h
-    src/dsp/Looper.cpp
-    src/dsp/Oversampler.h
-    src/dsp/Saturator.h
-    src/dsp/StateVariableFilter.h
-    src/dsp/Tape.h
+    src/LooperBridge.h
+    src/LoopExport.h
+    src/LoopExport.cpp
 )
 
 # --- LV2 ----------------------------------------------------------------------
