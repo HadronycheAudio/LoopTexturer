@@ -5,7 +5,7 @@
 #include "LooperIds.h"
 #include "ParamIds.h"
 
-#include "hadronyche/dsp/Gain.h"
+#include "hadronyche/vst/ParamSpec.h"
 
 #include "hadronyche/testhost/Host.h"
 
